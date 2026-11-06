@@ -3,7 +3,7 @@ var SIGNATURE_NAME = "Lawali";
 var SIGNATURE_TITLE = "Analytics & AI Solutions";
 var SIGNATURE_PHONE = "513-639-8829";
 var ASSET_BASE = "https://bomino.github.io/vstx-email-style/assets/";
-var LOGO_URL = ASSET_BASE + "vstx-logo.png";
+var LOGO_URL = ASSET_BASE + "vstx-logo-v2.png";
 var LOGO_WIDTH = 54;
 var LOGO_HEIGHT = 70;
 var HEXAGONS_URL = ASSET_BASE + "vstx-hexagons.png";
@@ -94,8 +94,8 @@ function ruleCell(height, color, attrs) {
 function brandBarHtml() {
   return (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px">' +
-    "<tr>" + ruleCell(4, INK, ' colspan="2"') + "</tr>" +
-    "<tr>" + ruleCell(2, YELLOW, ' width="38%"') + '<td style="font-size:0;line-height:0">&nbsp;</td></tr>' +
+    "<tr>" + ruleCell(6, INK, ' colspan="2"') + "</tr>" +
+    '<tr><td width="9%" style="font-size:0;line-height:0">&nbsp;</td>' + ruleCell(3, YELLOW, "") + "</tr>" +
     "</table>"
   );
 }

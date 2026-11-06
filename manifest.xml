@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0" xsi:type="MailApp">
   <Id>d3a8f5e1-2c47-4b9a-9e60-7f1b4c2d8a95</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>Versatex</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Versatex Email Style"/>
-  <Description DefaultValue="Restyles your outgoing email in the Versatex look when you select Send."/>
+  <Description DefaultValue="Restyles your outgoing email and meeting invites in the Versatex look when you select Send."/>
   <IconUrl DefaultValue="https://bomino.github.io/vstx-email-style/assets/icon-64.png"/>
   <HighResolutionIconUrl DefaultValue="https://bomino.github.io/vstx-email-style/assets/icon-128.png"/>
   <SupportUrl DefaultValue="https://bomino.github.io/vstx-email-style/taskpane.html"/>
@@ -68,12 +68,65 @@
                       <FunctionName>previewStyle</FunctionName>
                     </Action>
                   </Control>
+                  <Control xsi:type="Button" id="vstxSettingsButton">
+                    <Label resid="SettingsButton.Label"/>
+                    <Supertip>
+                      <Title resid="SettingsButton.Label"/>
+                      <Description resid="SettingsButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="vstxMeetingGroup">
+                  <Label resid="GroupLabel"/>
+                  <Control xsi:type="Button" id="vstxMeetingPreviewButton">
+                    <Label resid="PreviewButton.Label"/>
+                    <Supertip>
+                      <Title resid="PreviewButton.Label"/>
+                      <Description resid="MeetingPreviewButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>previewStyle</FunctionName>
+                    </Action>
+                  </Control>
+                  <Control xsi:type="Button" id="vstxMeetingSettingsButton">
+                    <Label resid="SettingsButton.Label"/>
+                    <Supertip>
+                      <Title resid="SettingsButton.Label"/>
+                      <Description resid="SettingsButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
                 </Group>
               </OfficeTab>
             </ExtensionPoint>
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
                 <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>
+                <LaunchEvent Type="OnAppointmentSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>
               </LaunchEvents>
               <SourceLocation resid="WebViewRuntime.Url"/>
             </ExtensionPoint>
@@ -90,13 +143,17 @@
           <bt:Url id="Commands.Url" DefaultValue="https://bomino.github.io/vstx-email-style/commands.html"/>
           <bt:Url id="WebViewRuntime.Url" DefaultValue="https://bomino.github.io/vstx-email-style/commands.html"/>
           <bt:Url id="JSRuntime.Url" DefaultValue="https://bomino.github.io/vstx-email-style/launchevent.js"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://bomino.github.io/vstx-email-style/taskpane.html"/>
         </bt:Urls>
         <bt:ShortStrings>
           <bt:String id="GroupLabel" DefaultValue="Versatex"/>
           <bt:String id="PreviewButton.Label" DefaultValue="Apply Versatex style"/>
+          <bt:String id="SettingsButton.Label" DefaultValue="Signature settings"/>
         </bt:ShortStrings>
         <bt:LongStrings>
           <bt:String id="PreviewButton.Tooltip" DefaultValue="Restyle this draft now so you can see how it will look before sending."/>
+          <bt:String id="MeetingPreviewButton.Tooltip" DefaultValue="Restyle this invite now so you can see how it will look before sending."/>
+          <bt:String id="SettingsButton.Tooltip" DefaultValue="Edit the name, title and phone number in your Versatex signature."/>
         </bt:LongStrings>
       </Resources>
     </VersionOverrides>

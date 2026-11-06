@@ -1,11 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Versatex Email Style</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Versatex signature</title>
   <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script type="text/javascript">var VSTX_SETTINGS_PANE = true;</script>
+  <script type="text/javascript" src="launchevent.js?v=23"></script>
+  <style>
+    @font-face { font-family: "Roboto"; font-weight: 400; src: url("fonts/roboto-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "Roboto"; font-weight: 700; src: url("fonts/roboto-latin-700-normal.woff2") format("woff2"); }
+    @font-face { font-family: "Roboto"; font-weight: 900; src: url("fonts/roboto-latin-900-normal.woff2") format("woff2"); }
+
+    :root {
+      --ink: #231f20;
+      --yellow: #fdc00f;
+      --grey-80: #58595b;
+      --grey-20: #d3d2d2;
+      --grey-05: #f4f4f4;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 400 14px/1.5 Roboto, "Segoe UI", Arial, sans-serif; }
+
+    .band { position: relative; background: var(--ink); padding: 14px 16px; margin-bottom: 4px; }
+    .band::after { content: ""; position: absolute; left: 9%; right: 0; bottom: -4px; height: 4px; background: var(--yellow); }
+    .band img { display: block; height: 24px; width: auto; }
+
+    main { padding: 22px 16px 28px; }
+    h1 { margin: 0 0 4px; font-size: 18px; font-weight: 900; line-height: 1.2; }
+    .lead { margin: 0 0 6px; color: var(--grey-80); }
+
+    label { display: block; margin: 16px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    input {
+      width: 100%; padding: 9px 10px; border: 1px solid var(--grey-20); border-radius: 2px;
+      font: inherit; color: var(--ink); background: var(--paper);
+    }
+    input:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
+
+    .preview { margin-top: 4px; border: 1px solid var(--grey-20); overflow: hidden; }
+    .preview > table { margin-top: 0 !important; }
+
+    .save {
+      width: 100%; margin-top: 20px; padding: 11px 16px; border: 2px solid var(--ink); border-radius: 2px;
+      background: var(--ink); color: var(--paper); font: 700 14px Roboto, Arial, sans-serif; cursor: pointer;
+    }
+    .save:hover { background: var(--grey-80); border-color: var(--grey-80); }
+    .save:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .save:disabled { background: var(--grey-20); border-color: var(--grey-20); color: var(--grey-80); cursor: default; }
+
+    .status { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--grey-80); }
+  </style>
 </head>
-<body style="font-family:Roboto,Arial,sans-serif;color:#231f20;padding:12px">
-  <p>Versatex Email Style restyles your outgoing emails in the Versatex look when you select Send.</p>
+<body>
+  <header class="band"><img src="assets/vstx-horizontal-light.png" alt="Versatex" /></header>
+  <main>
+    <h1>Your email signature</h1>
+    <p class="lead">Added to every email and invite the add-in styles. Leave the title or phone empty to hide that line.</p>
+
+    <form id="signature-form" novalidate>
+      <label for="name">Name</label>
+      <input id="name" name="name" maxlength="60" autocomplete="name" required />
+
+      <label for="title">Title</label>
+      <input id="title" name="title" maxlength="80" autocomplete="organization-title" />
+
+      <label for="phone">Phone</label>
+      <input id="phone" name="phone" maxlength="40" autocomplete="tel" inputmode="tel" />
+
+      <label>Preview</label>
+      <div class="preview" id="preview"></div>
+
+      <button class="save" type="submit" id="save">Save signature</button>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </form>
+  </main>
+
+  <script type="text/javascript">
+    Office.onReady(function () {
+      var form = document.getElementById("signature-form");
+      var fields = ["name", "title", "phone"].map(function (id) { return document.getElementById(id); });
+      var preview = document.getElementById("preview");
+      var save = document.getElementById("save");
+      var status = document.getElementById("status");
+
+      function current() {
+        return { name: fields[0].value.trim(), title: fields[1].value.trim(), phone: fields[2].value.trim() };
+      }
+
+      function render() {
+        var details = current();
+        preview.innerHTML = signatureHtml({
+          name: details.name || SIGNATURE_DEFAULTS.name,
+          title: details.title,
+          phone: details.phone,
+        });
+        save.disabled = !details.name;
+      }
+
+      var saved = signatureDetails();
+      fields[0].value = saved.name;
+      fields[1].value = saved.title;
+      fields[2].value = saved.phone;
+      render();
+
+      fields.forEach(function (field) {
+        field.addEventListener("input", function () {
+          status.textContent = "";
+          render();
+        });
+      });
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (!current().name) return;
+        save.disabled = true;
+        status.textContent = "Saving…";
+        Office.context.roamingSettings.set(SIGNATURE_SETTINGS_KEY, current());
+        Office.context.roamingSettings.saveAsync(function (result) {
+          save.disabled = false;
+          status.textContent =
+            result.status === Office.AsyncResultStatus.Succeeded
+              ? "Saved. Your next email uses this signature."
+              : "Couldn't save: " + (result.error && result.error.message ? result.error.message : "please try again.");
+        });
+      });
+    });
+  </script>
 </body>
 </html>

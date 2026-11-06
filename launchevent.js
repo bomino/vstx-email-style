@@ -1,9 +1,9 @@
 var VSTX_SIGNATURE_ID = "vstx-signature";
 var VSTX_BAR_ID = "vstx-bar";
 var VSTX_LIST_CLASS = "vstx-list";
-var SIGNATURE_NAME = "Lawali";
-var SIGNATURE_TITLE = "Analytics & AI Solutions";
-var SIGNATURE_PHONE = "513-639-8829";
+var VSTX_TABLE_CLASS = "vstx-table";
+var SIGNATURE_SETTINGS_KEY = "vstxSignature";
+var SIGNATURE_DEFAULTS = { name: "Lawali", title: "Analytics & AI Solutions", phone: "513-639-8829" };
 var ASSET_BASE = "https://bomino.github.io/vstx-email-style/assets/";
 var LOGO_URL = ASSET_BASE + "vstx-logo-v2.png";
 var LOGO_WIDTH = 54;
@@ -41,11 +41,18 @@ var LIST_TAGS = /<(\/?)(ul|ol|li)\b([^>]*)>/gi;
 var BULLET_BEFORE_BLOCK = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(\s*<(?:div|p)\b[^>]*>)/gi;
 var REPEATED_BULLETS = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(?:\s*<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)+/gi;
 var STYLE_ATTR = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i;
+var TABLE_CSS = "border-collapse:collapse;margin:8px 0 14px";
+var HEADER_CELL_CSS =
+  "background:" + INK + ";color:#ffffff;font-weight:700;padding:8px 12px;border:none;border-bottom:3px solid " + YELLOW + ";text-align:left;vertical-align:bottom";
+var BODY_CELL_CSS = "padding:7px 12px;border:none;border-bottom:1px solid " + HAIRLINE + ";vertical-align:top";
+// Everything from the first match onwards is left untouched: quoted replies, forwards and a Teams joining block.
 var QUOTE_MARKERS = [
   /<div[^>]*\bid=["']?appendonsend\b/i,
   /<div[^>]*\bid=["']?divRplyFwdMsg\b/i,
   /<div[^>]*border-top:\s*solid\s+#E1E1E1/i,
   /<hr\b[^>]*>/i,
+  /<div[^>]*>\s*<span[^>]*>\s*_{20,}/i,
+  /<div[^>]*\bclass=["']?[^"'>]*\bme-email-/i,
 ];
 
 function escapeHtml(text) {
@@ -112,7 +119,7 @@ function withStyle(name, attrs, declarations, overrides) {
       return declaration[0] + ":" + declaration[1];
     })
     .join(";");
-  var otherAttrs = (attrs || "").replace(STYLE_ATTR, "").replace(/\s+$/, "");
+  var otherAttrs = (attrs || "").replace(STYLE_ATTR, "").replace(/\s{2,}/g, " ").replace(/\s+$/, "");
   return "<" + name + otherAttrs + ' style="' + style + '">';
 }
 
@@ -133,7 +140,7 @@ function scanTextTags(html, visit) {
       if (closing) {
         if (tables.pop()) foreignTables--;
       } else {
-        var foreign = attrs.indexOf(VSTX_LIST_CLASS) === -1;
+        var foreign = attrs.indexOf(VSTX_LIST_CLASS) === -1 && attrs.indexOf(VSTX_TABLE_CLASS) === -1;
         tables.push(foreign);
         if (foreign) foreignTables++;
       }
@@ -301,8 +308,82 @@ function withNumberBadges(html) {
   return output + html.slice(cursor);
 }
 
+// ---- Tables ----
+
+function endOfTable(html, from) {
+  var tags = /<(\/?)table\b[^>]*>/gi;
+  tags.lastIndex = from;
+  var depth = 1;
+  var match;
+  while ((match = tags.exec(html))) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) return tags.lastIndex;
+  }
+  return -1;
+}
+
+function eachTopLevelTable(html, transform) {
+  var openers = /<table\b([^>]*)>/gi;
+  var output = "";
+  var cursor = 0;
+  var open;
+  while ((open = openers.exec(html))) {
+    var end = endOfTable(html, openers.lastIndex);
+    if (end === -1) break;
+    output += html.slice(cursor, open.index) + transform(html.slice(open.index, end), open[1]);
+    cursor = end;
+    openers.lastIndex = end;
+  }
+  return output + html.slice(cursor);
+}
+
+function isOwnTable(attrs) {
+  return [VSTX_LIST_CLASS, VSTX_TABLE_CLASS, VSTX_BAR_ID, VSTX_SIGNATURE_ID].some(function (marker) {
+    return attrs.indexOf(marker) !== -1;
+  });
+}
+
+function withClass(openingTag, className) {
+  if (/\bclass\s*=\s*"/i.test(openingTag)) return openingTag.replace(/\bclass\s*=\s*"/i, 'class="' + className + " ");
+  return openingTag.replace(/^<table/i, '<table class="' + className + '"');
+}
+
+function withBgcolor(tag, color) {
+  return tag.replace(/\sbgcolor\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i, "").replace(/>$/, ' bgcolor="' + color + '">');
+}
+
+// A table without colours of its own was inserted in Outlook; pasted Excel or Power BI tables keep their look.
+function markInsertedTables(html) {
+  return eachTopLevelTable(html, function (table, attrs) {
+    if (isOwnTable(attrs)) return table;
+    var openingEnd = table.indexOf(">") + 1;
+    var pasted = /background|bgcolor|mso-|class=["']?xl/i.test(table);
+    if (pasted || /<table\b/i.test(table.slice(openingEnd))) return table;
+    return withClass(table.slice(0, openingEnd), VSTX_TABLE_CLASS) + table.slice(openingEnd);
+  });
+}
+
+function brandTables(html) {
+  return eachTopLevelTable(html, function (table, attrs) {
+    if (attrs.indexOf(VSTX_TABLE_CLASS) === -1) return table;
+    var openingEnd = table.indexOf(">") + 1;
+    var row = 0;
+    var rows = table.slice(openingEnd).replace(/(<tr\b[^>]*>)([\s\S]*?)(<\/tr>)/gi, function (_row, open, cells, close) {
+      var header = row === 0;
+      var fill = header ? INK : row % 2 === 0 ? PANEL : "#ffffff";
+      var css = header ? HEADER_CELL_CSS : BODY_CELL_CSS + ";background:" + fill;
+      row++;
+      var styled = cells.replace(/<(td|th)\b([^>]*)>/gi, function (tag, name, cellAttrs) {
+        return withBgcolor(mergeStyle(tag, name, cellAttrs, css), fill);
+      });
+      return open + (header ? styled.replace(/([;"'\s])color:#231f20/gi, "$1color:#ffffff") : styled) + close;
+    });
+    return mergeStyle(table.slice(0, openingEnd), "table", attrs, TABLE_CSS) + rows;
+  });
+}
+
 function restyleOwnPart(html) {
-  return withNumberBadges(withHexagonBullets(brandText(html)));
+  return withNumberBadges(withHexagonBullets(brandTables(brandText(markInsertedTables(html)))));
 }
 
 // ---- Frame: brand bar and signature ----
@@ -323,9 +404,33 @@ function brandBarHtml() {
   );
 }
 
-function signatureHtml() {
+function savedSignature() {
+  var roaming = typeof Office !== "undefined" && Office.context && Office.context.roamingSettings;
+  var saved = roaming ? roaming.get(SIGNATURE_SETTINGS_KEY) : null;
+  return saved && typeof saved === "object" ? saved : {};
+}
+
+function signatureDetails() {
+  var saved = savedSignature();
+  var pick = function (key) {
+    return typeof saved[key] === "string" ? saved[key].trim() : SIGNATURE_DEFAULTS[key];
+  };
+  return { name: pick("name") || SIGNATURE_DEFAULTS.name, title: pick("title"), phone: pick("phone") };
+}
+
+function signatureLines(details) {
   var text = "font-family:" + FONT_STACK + ";";
-  var phone = escapeHtml(SIGNATURE_PHONE).replace(/-/g, "&#8209;");
+  var lines = ['<span style="' + text + "font-size:16px;font-weight:700;letter-spacing:.01em;color:" + INK + '">' + escapeHtml(details.name) + "</span>"];
+  if (details.title) lines.push('<span style="' + text + "font-size:13px;color:" + INK + '">' + escapeHtml(details.title) + "</span>");
+  if (details.phone) {
+    lines.push('<span style="' + text + "font-size:13px;color:" + GREY + '">' + escapeHtml(details.phone).replace(/-/g, "&#8209;") + "</span>");
+  }
+  return lines.join("<br>");
+}
+
+function signatureHtml(details) {
+  var text = "font-family:" + FONT_STACK + ";";
+  details = details || signatureDetails();
   return (
     '<table id="' + VSTX_SIGNATURE_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="' + PANEL + '"' +
     ' style="border-collapse:collapse;margin-top:26px;background:' + PANEL + ";border-top:1px solid " + HAIRLINE + '">' +
@@ -336,9 +441,7 @@ function signatureHtml() {
     text + "font-size:12px;font-weight:700;color:" + INK + '">' +
     "</td>" +
     '<td style="vertical-align:middle;padding:10px 20px 10px 16px;border-left:3px solid ' + YELLOW + '">' +
-    '<span style="' + text + "font-size:16px;font-weight:700;letter-spacing:.01em;color:" + INK + '">' + escapeHtml(SIGNATURE_NAME) + "</span><br>" +
-    '<span style="' + text + "font-size:13px;color:" + INK + '">' + escapeHtml(SIGNATURE_TITLE) + "</span><br>" +
-    '<span style="' + text + "font-size:13px;color:" + GREY + '">' + phone + "</span>" +
+    signatureLines(details) +
     "</td>" +
     '<td align="right" style="vertical-align:middle;padding:10px 22px 10px 10px">' +
     '<img src="' + HEXAGONS_URL + '" width="' + HEXAGONS_WIDTH + '" height="' + HEXAGONS_HEIGHT + '" alt=""' +
@@ -518,5 +621,8 @@ function previewStyle(event) {
     });
 }
 
-Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
-Office.actions.associate("previewStyle", previewStyle);
+// The settings pane loads this file only to preview the signature, and declares VSTX_SETTINGS_PANE first.
+if (typeof VSTX_SETTINGS_PANE === "undefined") {
+  Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
+  Office.actions.associate("previewStyle", previewStyle);
+}

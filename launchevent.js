@@ -18,7 +18,7 @@ var HAIRLINE = "#e6e7e8";
 var BRAND_TEXT = "font-family:" + FONT_STACK + ";color:" + INK;
 var BODY_TEXT = BRAND_TEXT + ";font-size:15px;line-height:1.6";
 var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
-var BULLET_ITEM_CSS = "margin-bottom:4px";
+var BULLET_ITEM_CSS = "list-style:none;margin-bottom:4px";
 var HEXAGON_BULLET =
   "<span style=\"color:" + YELLOW + ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;";
 var BADGE_SIZE = 22;
@@ -29,11 +29,8 @@ var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 8px";
 var REVIEW_TAG = "[review]";
 var TEXT_TAGS = /<(p|li|div|span|td|font)(\s[^>]*)?>/gi;
 var HEADING_TAGS = /<(h[1-6])(\s[^>]*)?>/gi;
-var BULLET_LISTS = /<ul\b[\s\S]*?<\/ul>/gi;
-var LIST_OPEN = /<(ul)(\s[^>]*)?>/gi;
-var LIST_ITEMS = /<(li)(\s[^>]*)?>(\s*<(?:div|p)\b[^>]*>)?/gi;
-var NUMBERED_LISTS = /<ol\b([^>]*)>([\s\S]*?)<\/ol>/gi;
-var LIST_ITEM_CONTENT = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+var LIST_TAGS = /<(\/?)(ul|ol|li)\b([^>]*)>/gi;
+var BULLET_BEFORE_BLOCK = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(\s*<(?:div|p)\b[^>]*>)/gi;
 var STYLE_ATTR = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i;
 var QUOTE_MARKERS = [
   /<div[^>]*\bid=["']?appendonsend\b/i,
@@ -76,12 +73,24 @@ function styleMerger(css) {
   };
 }
 
-function withHexagonBullets(list) {
+function withHexagonBullets(html) {
+  var styleList = styleMerger(BULLET_LIST_CSS);
   var styleItem = styleMerger(BULLET_ITEM_CSS);
-  return list.replace(LIST_OPEN, styleMerger(BULLET_LIST_CSS)).replace(LIST_ITEMS, function (match, name, attrs, innerBlock) {
-    var itemTag = match.slice(0, match.length - (innerBlock || "").length);
-    return styleItem(itemTag, name, attrs) + (innerBlock || "") + HEXAGON_BULLET;
+  var openLists = [];
+  var marked = html.replace(LIST_TAGS, function (tag, closing, name, attrs) {
+    name = name.toLowerCase();
+    if (name !== "li") {
+      if (closing) {
+        openLists.pop();
+        return tag;
+      }
+      openLists.push(name);
+      return name === "ul" ? styleList(tag, name, attrs) : tag;
+    }
+    if (closing || openLists[openLists.length - 1] !== "ul") return tag;
+    return styleItem(tag, name, attrs) + HEXAGON_BULLET;
   });
+  return marked.replace(BULLET_BEFORE_BLOCK, "$2$1");
 }
 
 function numberBadge(number) {
@@ -92,19 +101,49 @@ function numberBadge(number) {
   );
 }
 
-function asNumberedTable(list, attrs, inner) {
-  if (/<(ol|ul)\b/i.test(inner)) return list;
-  var start = /\bstart=["']?(\d+)/i.exec(attrs || "");
+function endOfNumberedList(html, from) {
+  var tags = /<(\/?)ol\b[^>]*>/gi;
+  tags.lastIndex = from;
+  var depth = 1;
+  var match;
+  while ((match = tags.exec(html))) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) return { innerEnd: match.index, end: tags.lastIndex };
+  }
+  return null;
+}
+
+function topLevelItems(inner) {
+  var tags = /<(\/?)(ul|ol|li)\b[^>]*>/gi;
+  var items = [];
+  var depth = 0;
+  var itemStart = -1;
+  var match;
+  while ((match = tags.exec(inner))) {
+    var closing = match[1] === "/";
+    if (match[2].toLowerCase() !== "li") {
+      depth += closing ? -1 : 1;
+    } else if (depth === 0 && !closing) {
+      itemStart = tags.lastIndex;
+    } else if (depth === 0 && itemStart !== -1) {
+      items.push(inner.slice(itemStart, match.index));
+      itemStart = -1;
+    }
+  }
+  return items;
+}
+
+function numberedTable(attrs, inner) {
+  var items = topLevelItems(inner);
+  if (!items.length) return "<ol" + attrs + ">" + inner + "</ol>";
+  var start = /\bstart=["']?(\d+)/i.exec(attrs);
   var number = start ? parseInt(start[1], 10) : 1;
-  var rows = [];
-  inner.replace(LIST_ITEM_CONTENT, function (_item, content) {
-    rows.push(
+  var rows = items.map(function (content) {
+    return (
       '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
-      '<td style="' + NUMBERED_TEXT_CSS + '">' + content + "</td></tr>"
+      '<td style="' + NUMBERED_TEXT_CSS + '">' + withNumberBadges(content) + "</td></tr>"
     );
-    return "";
   });
-  if (!rows.length) return list;
   return (
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 12px">' +
     rows.join("") +
@@ -112,12 +151,27 @@ function asNumberedTable(list, attrs, inner) {
   );
 }
 
+function withNumberBadges(html) {
+  var openers = /<ol\b([^>]*)>/gi;
+  var output = "";
+  var cursor = 0;
+  var open;
+  while ((open = openers.exec(html))) {
+    var close = endOfNumberedList(html, openers.lastIndex);
+    if (!close) break;
+    output += html.slice(cursor, open.index) + numberedTable(open[1], html.slice(openers.lastIndex, close.innerEnd));
+    cursor = close.end;
+    openers.lastIndex = close.end;
+  }
+  return output + html.slice(cursor);
+}
+
 function restyleOwnPart(html) {
-  return html
-    .replace(TEXT_TAGS, styleMerger(BODY_TEXT))
-    .replace(HEADING_TAGS, styleMerger(BRAND_TEXT))
-    .replace(BULLET_LISTS, withHexagonBullets)
-    .replace(NUMBERED_LISTS, asNumberedTable);
+  return withNumberBadges(
+    withHexagonBullets(
+      html.replace(TEXT_TAGS, styleMerger(BODY_TEXT)).replace(HEADING_TAGS, styleMerger(BRAND_TEXT))
+    )
+  );
 }
 
 function ruleCell(height, color, attrs) {

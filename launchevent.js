@@ -30,7 +30,9 @@ var BADGE_CSS =
   "width:" + BADGE_SIZE + "px;height:" + BADGE_SIZE + "px;background:" + YELLOW + ";font-family:" + FONT_STACK +
   ";font-size:12px;font-weight:900;color:" + INK + ";line-height:" + BADGE_SIZE + "px;text-align:center";
 var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 8px";
-var REVIEW_TAG = "[review]";
+var REVIEW_TAG = /\[review\]/i;
+var PLAIN_TAG = /\[plain\]/i;
+var CONTROL_TAGS = /\[(?:review|plain)\]/gi;
 var TEXT_TAGS = /<(\/?)(table|p|li|div|span|font|td|th|h[1-6])\b([^>]*)>/gi;
 var BLOCK_TAGS = /^(p|li|div)$/;
 var HEADING_TAGS = /^h[1-6]$/;
@@ -431,18 +433,32 @@ function canOfferSendAnyway() {
   return Office.context.requirements.isSetSupported("Mailbox", "1.14");
 }
 
+function withoutControlTags(subject) {
+  return subject.replace(CONTROL_TAGS, " ").replace(/\s{2,}/g, " ").trim();
+}
+
+// The [review] and [plain] subject tags steer the add-in and are removed before the email goes out.
 function onMessageSendHandler(event) {
   var item = Office.context.mailbox.item;
-  var framedNow = false;
-  restyleCurrentItem()
+  var subject = "";
+  callAsync(function (done) {
+    item.subject.getAsync(done);
+  })
+    .then(function (value) {
+      subject = value || "";
+      return PLAIN_TAG.test(subject) ? "skipped" : restyleCurrentItem();
+    })
     .then(function (status) {
-      framedNow = status === "styled";
+      var cleanSubject = withoutControlTags(subject);
+      if (cleanSubject === subject) return status;
       return callAsync(function (done) {
-        item.subject.getAsync(done);
+        item.subject.setAsync(cleanSubject, done);
+      }).then(function () {
+        return status;
       });
     })
-    .then(function (subject) {
-      var wantsReview = framedNow && subject.toLowerCase().indexOf(REVIEW_TAG) !== -1;
+    .then(function (status) {
+      var wantsReview = status === "styled" && REVIEW_TAG.test(subject);
       if (!wantsReview) {
         event.completed({ allowEvent: true });
         return;

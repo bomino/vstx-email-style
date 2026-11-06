@@ -21,12 +21,17 @@ var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
 var BULLET_ITEM_CSS = "margin-bottom:4px";
 var HEXAGON_BULLET =
   "<span style=\"color:" + YELLOW + ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;";
+var NUMBER_CELL_CSS =
+  "vertical-align:top;width:18px;padding:0 10px 6px 2px;font-family:" + FONT_STACK + ";font-size:15px;line-height:1.6;font-weight:900;color:" + INK;
+var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 6px 10px;border-left:2px solid " + YELLOW;
 var REVIEW_TAG = "[review]";
 var TEXT_TAGS = /<(p|li|div|span|td|font)(\s[^>]*)?>/gi;
 var HEADING_TAGS = /<(h[1-6])(\s[^>]*)?>/gi;
 var BULLET_LISTS = /<ul\b[\s\S]*?<\/ul>/gi;
 var LIST_OPEN = /<(ul)(\s[^>]*)?>/gi;
 var LIST_ITEMS = /<(li)(\s[^>]*)?>(\s*<(?:div|p)\b[^>]*>)?/gi;
+var NUMBERED_LISTS = /<ol\b([^>]*)>([\s\S]*?)<\/ol>/gi;
+var LIST_ITEM_CONTENT = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
 var STYLE_ATTR = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i;
 var QUOTE_MARKERS = [
   /<div[^>]*\bid=["']?appendonsend\b/i,
@@ -77,11 +82,32 @@ function withHexagonBullets(list) {
   });
 }
 
+function asNumberedTable(list, attrs, inner) {
+  if (/<(ol|ul)\b/i.test(inner)) return list;
+  var start = /\bstart=["']?(\d+)/i.exec(attrs || "");
+  var number = start ? parseInt(start[1], 10) : 1;
+  var rows = [];
+  inner.replace(LIST_ITEM_CONTENT, function (_item, content) {
+    rows.push(
+      '<tr><td style="' + NUMBER_CELL_CSS + '">' + number++ + "</td>" +
+      '<td style="' + NUMBERED_TEXT_CSS + '">' + content + "</td></tr>"
+    );
+    return "";
+  });
+  if (!rows.length) return list;
+  return (
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:6px 0 12px">' +
+    rows.join("") +
+    "</table>"
+  );
+}
+
 function restyleOwnPart(html) {
   return html
     .replace(TEXT_TAGS, styleMerger(BODY_TEXT))
     .replace(HEADING_TAGS, styleMerger(BRAND_TEXT))
-    .replace(BULLET_LISTS, withHexagonBullets);
+    .replace(BULLET_LISTS, withHexagonBullets)
+    .replace(NUMBERED_LISTS, asNumberedTable);
 }
 
 function ruleCell(height, color, attrs) {

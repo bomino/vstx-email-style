@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Versatex signature</title>
+  <title>Versatex settings</title>
   <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script type="text/javascript">var VSTX_SETTINGS_PANE = true;</script>
-  <script type="text/javascript" src="launchevent.js?v=23"></script>
+  <script type="text/javascript" src="launchevent.js?v=24"></script>
   <style>
     @font-face { font-family: "Roboto"; font-weight: 400; src: url("fonts/roboto-latin-400-normal.woff2") format("woff2"); }
     @font-face { font-family: "Roboto"; font-weight: 700; src: url("fonts/roboto-latin-700-normal.woff2") format("woff2"); }
@@ -16,6 +16,7 @@
       --ink: #231f20;
       --yellow: #fdc00f;
       --grey-80: #58595b;
+      --grey-40: #a7a9ac;
       --grey-20: #d3d2d2;
       --grey-05: #f4f4f4;
       --paper: #ffffff;
@@ -51,6 +52,32 @@
     .save:disabled { background: var(--grey-20); border-color: var(--grey-20); color: var(--grey-80); cursor: default; }
 
     .status { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--grey-80); }
+
+    h2 { margin: 30px 0 4px; font-size: 15px; font-weight: 900; }
+    h2::before { content: ""; display: block; width: 24px; height: 3px; margin-bottom: 8px; background: var(--yellow); }
+
+    .feature { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--grey-05); }
+    .feature:last-child { border-bottom: 0; }
+    .feature-text { flex: 1; min-width: 0; }
+    .feature-name { margin: 0; font-weight: 700; text-transform: none; letter-spacing: 0; font-size: 14px; }
+    .feature-how { margin: 2px 0 0; color: var(--grey-80); font-size: 12.5px; }
+    .feature-how code { font: 700 12px Roboto, Arial, sans-serif; color: var(--ink); background: var(--grey-05); padding: 0 4px; border-radius: 2px; }
+
+    .switch {
+      appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 36px; height: 20px; margin: 2px 0 0; padding: 0;
+      border: 0; border-radius: 10px; background: var(--grey-40); cursor: pointer; transition: background .15s;
+    }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--paper); transition: transform .15s;
+    }
+    .switch:checked { background: var(--ink); }
+    .switch:checked::after { transform: translateX(16px); }
+    .switch:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    .tags { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--grey-80); }
+    .tags li { margin: 6px 0; }
+    .tags code { font: 700 12px Roboto, Arial, sans-serif; color: var(--ink); background: var(--grey-05); padding: 0 4px; border-radius: 2px; }
   </style>
 </head>
 <body>
@@ -72,7 +99,54 @@
       <label>Preview</label>
       <div class="preview" id="preview"></div>
 
-      <button class="save" type="submit" id="save">Save signature</button>
+      <h2>Smart formatting</h2>
+      <p class="lead">Type naturally. These patterns turn into designed elements when you send.</p>
+
+      <div class="features">
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="headings" aria-describedby="headings-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="headings">Section headings</label>
+          <p class="feature-how" id="headings-how">A short line in <b>bold</b> on its own.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="callouts" aria-describedby="callouts-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="callouts">Callouts</label>
+          <p class="feature-how" id="callouts-how">Start a line with <code>Action:</code> <code>Decision:</code> <code>Deadline:</code> <code>Important:</code> <code>Ask:</code> <code>Note:</code> <code>FYI:</code> or <code>Next steps:</code></p>
+        </div>
+      </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="figures" aria-describedby="figures-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="figures">Key figures</label>
+          <p class="feature-how" id="figures-how">Percentages and amounts such as <code>6%</code> <code>-4%</code> <code>$1.2M</code> get a marker.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="buttons" aria-describedby="buttons-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="buttons">Link buttons</label>
+          <p class="feature-how" id="buttons-how">Paste a link on its own line, such as a Power BI or SharePoint link.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="statuses" aria-describedby="statuses-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="statuses">Status tags</label>
+          <p class="feature-how" id="statuses-how"><code>[On track]</code> <code>[At risk]</code> <code>[Off track]</code> <code>[Done]</code> <code>[Blocked]</code> <code>[In progress]</code></p>
+        </div>
+      </div>
+      </div>
+
+      <h2>Subject tags</h2>
+      <ul class="tags">
+        <li><code>[review]</code> pauses once so you can check the styled email, then sends with a clean subject.</li>
+        <li><code>[plain]</code> sends the email exactly as typed.</li>
+      </ul>
+
+      <button class="save" type="submit" id="save">Save settings</button>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </form>
   </main>
@@ -99,14 +173,24 @@
         save.disabled = !details.name;
       }
 
+      var switches = Object.keys(FEATURE_DEFAULTS).map(function (key) { return document.getElementById(key); });
+
+      function currentFeatures() {
+        var features = {};
+        switches.forEach(function (toggle) { features[toggle.id] = toggle.checked; });
+        return features;
+      }
+
       var saved = signatureDetails();
       fields[0].value = saved.name;
       fields[1].value = saved.title;
       fields[2].value = saved.phone;
+      var features = featureSettings();
+      switches.forEach(function (toggle) { toggle.checked = features[toggle.id]; });
       render();
 
-      fields.forEach(function (field) {
-        field.addEventListener("input", function () {
+      fields.concat(switches).forEach(function (control) {
+        control.addEventListener("input", function () {
           status.textContent = "";
           render();
         });
@@ -118,11 +202,12 @@
         save.disabled = true;
         status.textContent = "Saving…";
         Office.context.roamingSettings.set(SIGNATURE_SETTINGS_KEY, current());
+        Office.context.roamingSettings.set(FEATURES_SETTINGS_KEY, currentFeatures());
         Office.context.roamingSettings.saveAsync(function (result) {
           save.disabled = false;
           status.textContent =
             result.status === Office.AsyncResultStatus.Succeeded
-              ? "Saved. Your next email uses this signature."
+              ? "Saved. Your next email uses these settings."
               : "Couldn't save: " + (result.error && result.error.message ? result.error.message : "please try again.");
         });
       });

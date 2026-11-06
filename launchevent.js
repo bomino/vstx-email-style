@@ -4,6 +4,9 @@ var VSTX_LIST_CLASS = "vstx-list";
 var VSTX_TABLE_CLASS = "vstx-table";
 var SIGNATURE_SETTINGS_KEY = "vstxSignature";
 var SIGNATURE_DEFAULTS = { name: "Lawali", title: "Analytics & AI Solutions", phone: "513-639-8829" };
+var FEATURES_SETTINGS_KEY = "vstxFeatures";
+var FEATURE_DEFAULTS = { headings: true, callouts: true, figures: true, buttons: true, statuses: true };
+var OWN_MARKUP = /\bvstx-/;
 var ASSET_BASE = "https://bomino.github.io/vstx-email-style/assets/";
 var LOGO_URL = ASSET_BASE + "vstx-logo-v2.png";
 var LOGO_WIDTH = 54;
@@ -152,7 +155,7 @@ function scanTextTags(html, visit) {
     }
     var inCode = MONOSPACE.test(attrs) || codeContext[codeContext.length - 1] === true;
     codeContext.push(inCode);
-    if (/WordSection/i.test(attrs)) return tag;
+    if (/WordSection/i.test(attrs) || OWN_MARKUP.test(attrs)) return tag;
     return visit(tag, name, attrs, foreignTables > 0, inCode);
   });
 }
@@ -192,6 +195,256 @@ function brandText(html) {
     }
     return overrides.length ? withStyle(name, attrs, declarations, overrides) : tag;
   });
+}
+
+// ---- Smart formatting: simple typing patterns become designed elements ----
+
+var CALLOUTS = {
+  action: { label: "Action", strong: true },
+  actions: { label: "Actions", strong: true },
+  ask: { label: "Ask", strong: true },
+  decision: { label: "Decision", strong: true },
+  deadline: { label: "Deadline", strong: true },
+  important: { label: "Important", strong: true },
+  risk: { label: "Risk", strong: true },
+  note: { label: "Note", strong: false },
+  fyi: { label: "FYI", strong: false },
+  reminder: { label: "Reminder", strong: false },
+  "next step": { label: "Next step", strong: false },
+  "next steps": { label: "Next steps", strong: false },
+};
+// Fits the longest label ("Next steps") so every callout's text starts at the same edge.
+var CALLOUT_LABEL_WIDTH = 92;
+var CALLOUT_LINE =/^(actions?|ask|decision|deadline|important|risk|note|fyi|reminder|next steps?)\s*:\s*\S/i;
+var STATUS_COLORS = {
+  "on track": "#2e7d32",
+  done: "#2e7d32",
+  complete: "#2e7d32",
+  completed: "#2e7d32",
+  "at risk": "#e07b00",
+  "in progress": "#e07b00",
+  "off track": "#c62828",
+  blocked: "#c62828",
+  "not started": LIGHT_GREY,
+};
+var STATUS_TAG = /\[(on track|done|completed?|at risk|in progress|off track|blocked|not started)\]/gi;
+var KEY_FIGURE =
+  /(?<![\w$€£.,])(?:[+\-−]\s?)?(?:[$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:K|M|B|bn|million|billion)\b)?|\d[\d,]*(?:\.\d+)?(?:\s?%|(?:K|M|B|bn)\b|\s(?:million|billion)\b))/g;
+var FIGURE_LIMIT = 8;
+var INNERMOST_BLOCK = /<(div|p)\b([^>]*)>((?:(?!<\/?(?:div|p)\b)[\s\S])*?)<\/\1>/gi;
+var BOLD_RUN = /<(b|strong)\b[^>]*>[\s\S]*?<\/\1>|<span\b[^>]*font-weight\s*:\s*(?:bold|[6-9]00)[^>]*>[\s\S]*?<\/span>/gi;
+var BOLD_STYLE = /font-weight\s*:\s*(?:bold|[6-9]00)/i;
+var NOT_HEADINGS = /^(hi|hello|hey|dear|thanks|thank you|regards|best|best regards|kind regards|cheers|sincerely)\b/i;
+var LONE_LINK = /^((?:\s|&nbsp;|<(?!a\b)[^>]+>)*)<a\b([^>]*)>([\s\S]*?)<\/a>((?:\s|&nbsp;|<(?!a\b)[^>]+>)*)$/i;
+var COMPONENT_MARKUP = /\bvstx-(?:figure|status|heading|callout-label|button|bar|signature)/;
+var VOID_TAGS = /^(br|img|hr|meta|link|input|col|wbr|area|base|source)$/i;
+
+function roamingValue(key) {
+  var roaming = typeof Office !== "undefined" && Office.context && Office.context.roamingSettings;
+  var value = roaming ? roaming.get(key) : null;
+  return value && typeof value === "object" ? value : {};
+}
+
+function featureSettings() {
+  var saved = roamingValue(FEATURES_SETTINGS_KEY);
+  var features = {};
+  Object.keys(FEATURE_DEFAULTS).forEach(function (key) {
+    features[key] = typeof saved[key] === "boolean" ? saved[key] : FEATURE_DEFAULTS[key];
+  });
+  return features;
+}
+
+function plainText(html) {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function insideStructure(html, offset) {
+  var tags = /<(\/?)(ul|ol|table)\b/gi;
+  var depth = 0;
+  var match;
+  while ((match = tags.exec(html)) && match.index < offset) depth += match[1] ? -1 : 1;
+  return depth > 0;
+}
+
+function yellowRule(width, height) {
+  return (
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>' +
+    '<td width="' + width + '" height="' + height + '" bgcolor="' + YELLOW + '" style="width:' + width + "px;height:" + height + "px;background:" + YELLOW +
+    ';font-size:0;line-height:0">&nbsp;</td></tr></table>'
+  );
+}
+
+// A short line that is entirely bold, on its own, reads as a section heading.
+function asHeading(attrs, inner, text) {
+  if (text.length < 2 || text.length > 70 || /[.!?,;]$/.test(text) || NOT_HEADINGS.test(text) || !/[a-z]/i.test(text)) return null;
+  if (/<br\b/i.test(inner.replace(/(?:\s|<br\b[^>]*>)+$/i, ""))) return null;
+  var wholeBlockBold = BOLD_STYLE.test(attrs);
+  if (!wholeBlockBold && (inner.search(BOLD_RUN) === -1 || plainText(inner.replace(BOLD_RUN, "")))) return null;
+  return (
+    '<div class="vstx-heading" style="margin:12px 0 6px">' + yellowRule(24, 3) +
+    '<div class="vstx-heading-text" style="font-family:' + FONT_STACK + ";font-size:17px;font-weight:900;line-height:1.3;color:" + INK + ';margin-top:7px">' +
+    escapeHtml(text.replace(/\s*:\s*$/, "")) + "</div></div>"
+  );
+}
+
+// "Action: …", "Decision: …", "Deadline: …" and similar become a labelled row.
+function asCallout(inner, text) {
+  var match = CALLOUT_LINE.exec(text);
+  if (!match) return null;
+  var keyword = match[1];
+  var spec = CALLOUTS[keyword.toLowerCase().replace(/\s+/g, " ")];
+  var label = new RegExp("^((?:\\s|<[^>]+>)*)" + keyword.split(/\s+/).join("(?:\\s|&nbsp;)+") + "\\s*:\\s*", "i");
+  var body = inner.replace(label, "$1");
+  if (!spec || body === inner) return null;
+  var labelFill = spec.strong ? INK : GREY;
+  return (
+    '<table class="vstx-callout" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0"><tr>' +
+    '<td class="vstx-callout-label" width="' + CALLOUT_LABEL_WIDTH + '" bgcolor="' + labelFill + '" style="width:' + CALLOUT_LABEL_WIDTH + "px;background:" + labelFill + ";padding:9px 12px;vertical-align:top;white-space:nowrap" +
+    ";border-left:4px solid " + (spec.strong ? YELLOW : labelFill) + '">' +
+    '<span style="font-family:' + FONT_STACK + ';font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#ffffff">' + spec.label + "</span></td>" +
+    '<td bgcolor="' + PANEL + '" style="background:' + PANEL + ';padding:9px 14px;vertical-align:top">' +
+    '<div class="vstx-callout-text" style="' + BODY_TEXT + '">' + body + "</div></td>" +
+    "</tr></table>"
+  );
+}
+
+function hostOf(href) {
+  var match = /^https?:\/\/([^\/?#:]+)/i.exec(href);
+  return match ? match[1].toLowerCase().replace(/^www\./, "") : "";
+}
+
+function smartLinkLabel(href, host) {
+  if (/(^|\.)powerbi\.com$/.test(host)) return "Open Power BI report";
+  if (/(^|\.)sharepoint\.com$/.test(host)) {
+    if (/\/:x:\//i.test(href)) return "Open the Excel workbook";
+    if (/\/:w:\//i.test(href)) return "Open the Word document";
+    if (/\/:p:\//i.test(href)) return "Open the presentation";
+    if (/\/:b:\//i.test(href)) return "Open the PDF";
+    if (/\/:f:\//i.test(href)) return "Open the folder";
+    return "Open in SharePoint";
+  }
+  if (/(^|\.)teams\.(microsoft|live)\.com$/.test(host)) return "Open in Teams";
+  if (/^forms\.(office|microsoft)\.com$/.test(host)) return "Open the form";
+  if (/(^|\.)github\.com$/.test(host)) return "View on GitHub";
+  return "Open link";
+}
+
+// A link alone on its own line becomes a button, with the website shown underneath so people know where it goes.
+function asButton(inner) {
+  var match = LONE_LINK.exec(inner);
+  if (!match) return null;
+  var hrefMatch = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[2]);
+  var href = hrefMatch ? hrefMatch[1] || hrefMatch[2] : "";
+  var linkText = plainText(match[3]);
+  if (!/^https?:\/\//i.test(href) || !linkText) return null;
+  var host = hostOf(href);
+  var label = /^(https?:\/\/|www\.)/i.test(linkText) ? smartLinkLabel(href, host) : linkText;
+  var text = "font-family:" + FONT_STACK + ";";
+  return (
+    '<table class="vstx-button" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 4px"><tr>' +
+    '<td bgcolor="' + INK + '" style="background:' + INK + ";border-bottom:3px solid " + YELLOW + ';padding:11px 20px">' +
+    '<a href="' + href + '" style="' + text + 'font-size:14px;font-weight:700;color:#ffffff;text-decoration:none">' + escapeHtml(label) + "&nbsp;&#8594;</a>" +
+    "</td></tr></table>" +
+    '<div class="vstx-button-caption" style="' + text + "font-size:12px;color:" + GREY + ';margin:0 0 14px">' + escapeHtml(host) + "</div>"
+  );
+}
+
+function smartBlocks(html, features) {
+  return html.replace(INNERMOST_BLOCK, function (block, name, attrs, inner, offset, whole) {
+    if (OWN_MARKUP.test(attrs) || insideStructure(whole, offset)) return block;
+    var text = plainText(inner);
+    if (!text) return block;
+    return (
+      (features.buttons && asButton(inner)) ||
+      (features.callouts && asCallout(inner, text)) ||
+      (features.headings && asHeading(attrs, inner, text)) ||
+      block
+    );
+  });
+}
+
+function isTextOffLimits(name, attrs, skipTables) {
+  return (
+    /^(a|head|style|script|title|code|pre)$/.test(name) ||
+    (skipTables && name === "table") ||
+    MONOSPACE.test(attrs) ||
+    COMPONENT_MARKUP.test(attrs)
+  );
+}
+
+// Applies transform to text between tags, skipping links, code, our own components and (optionally) tables.
+function mapText(html, skipTables, transform) {
+  var open = [];
+  return html.replace(/(<[^>]+>)|([^<]+)/g, function (token, tag, text) {
+    if (text !== undefined) {
+      var skip = open.length > 0 && open[open.length - 1].skip;
+      return skip ? text : transform(text);
+    }
+    var parts = /^<(\/?)([a-z][a-z0-9]*)\b([^>]*)>$/i.exec(tag);
+    if (!parts) return tag;
+    var name = parts[2].toLowerCase();
+    if (parts[1]) {
+      for (var i = open.length - 1; i >= 0; i--) {
+        if (open[i].name === name) {
+          open.length = i;
+          break;
+        }
+      }
+      return tag;
+    }
+    if (VOID_TAGS.test(name) || /\/>$/.test(tag)) return tag;
+    var parentSkips = open.length > 0 && open[open.length - 1].skip;
+    open.push({ name: name, skip: parentSkips || isTextOffLimits(name, parts[3], skipTables) });
+    return tag;
+  });
+}
+
+function statusPill(_tag, status) {
+  var key = status.toLowerCase();
+  var label = key.charAt(0).toUpperCase() + key.slice(1);
+  return (
+    '<span class="vstx-status" style="display:inline-block;padding:1px 8px 1px 6px;background:' + PANEL + ";border:1px solid #d3d2d2;border-radius:2px;" +
+    "font-family:" + FONT_STACK + ";font-size:12px;font-weight:700;line-height:1.5;color:" + INK + ';white-space:nowrap">' +
+    '<span style="color:' + STATUS_COLORS[key] + ";font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;" + label + "</span>"
+  );
+}
+
+function markStatuses(html) {
+  return mapText(html, false, function (text) {
+    return text.replace(STATUS_TAG, statusPill);
+  });
+}
+
+// Key figures get a yellow underline marker; an email full of figures gets bold only, so the yellow never takes over.
+function markKeyFigures(html) {
+  var count = 0;
+  mapText(html, true, function (text) {
+    count += (text.match(KEY_FIGURE) || []).length;
+    return text;
+  });
+  var style = count > FIGURE_LIMIT ? "font-weight:700" : "font-weight:700;border-bottom:2px solid " + YELLOW + ";padding-bottom:1px";
+  return mapText(html, true, function (text) {
+    return text.replace(KEY_FIGURE, function (figure) {
+      return '<span class="vstx-figure" style="' + style + '">' + figure + "</span>";
+    });
+  });
+}
+
+function smartFormat(html) {
+  var features = featureSettings();
+  var result = smartBlocks(html, features);
+  if (features.statuses) result = markStatuses(result);
+  if (features.figures) result = markKeyFigures(result);
+  return result;
 }
 
 // ---- Lists ----
@@ -383,7 +636,7 @@ function brandTables(html) {
 }
 
 function restyleOwnPart(html) {
-  return withNumberBadges(withHexagonBullets(brandTables(brandText(markInsertedTables(html)))));
+  return withNumberBadges(withHexagonBullets(brandTables(smartFormat(brandText(markInsertedTables(html))))));
 }
 
 // ---- Frame: brand bar and signature ----
@@ -404,14 +657,8 @@ function brandBarHtml() {
   );
 }
 
-function savedSignature() {
-  var roaming = typeof Office !== "undefined" && Office.context && Office.context.roamingSettings;
-  var saved = roaming ? roaming.get(SIGNATURE_SETTINGS_KEY) : null;
-  return saved && typeof saved === "object" ? saved : {};
-}
-
 function signatureDetails() {
-  var saved = savedSignature();
+  var saved = roamingValue(SIGNATURE_SETTINGS_KEY);
   var pick = function (key) {
     return typeof saved[key] === "string" ? saved[key].trim() : SIGNATURE_DEFAULTS[key];
   };

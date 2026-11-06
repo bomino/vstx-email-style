@@ -73,6 +73,7 @@ function styleMerger(css) {
   };
 }
 
+// Any sub-list, numbered or not, becomes a hexagon bullet list; only top-level numbered lists keep numbers.
 function withHexagonBullets(html) {
   var styleList = styleMerger(BULLET_LIST_CSS);
   var styleItem = styleMerger(BULLET_ITEM_CSS);
@@ -80,12 +81,10 @@ function withHexagonBullets(html) {
   var marked = html.replace(LIST_TAGS, function (tag, closing, name, attrs) {
     name = name.toLowerCase();
     if (name !== "li") {
-      if (closing) {
-        openLists.pop();
-        return tag;
-      }
-      openLists.push(name);
-      return name === "ul" ? styleList(tag, name, attrs) : tag;
+      if (closing) return "</" + (openLists.pop() || name) + ">";
+      var listName = openLists.length ? "ul" : name;
+      openLists.push(listName);
+      return listName === "ul" ? styleList(tag, listName, attrs) : tag;
     }
     if (closing || openLists[openLists.length - 1] !== "ul") return tag;
     return styleItem(tag, name, attrs) + HEXAGON_BULLET;

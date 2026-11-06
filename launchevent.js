@@ -267,7 +267,7 @@ function numberedTable(attrs, inner) {
   var rows = items.map(function (content) {
     return (
       '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
-      '<td style="' + NUMBERED_TEXT_CSS + '">' + withNumberBadges(content) + "</td></tr>"
+      '<td style="' + NUMBERED_TEXT_CSS + '"><div style="' + BODY_TEXT + '">' + withNumberBadges(content) + "</div></td></tr>"
     );
   });
   return (

@@ -18,6 +18,8 @@ var HAIRLINE = "#e6e7e8";
 var BRAND_TEXT = "font-family:" + FONT_STACK + ";color:" + INK;
 var BODY_TEXT = BRAND_TEXT + ";font-size:15px;line-height:1.6";
 var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
+var SUBLIST_UNDER_NUMBER_CSS = "list-style:none;margin:6px 0 4px;padding-left:0";
+var SUBLIST_UNDER_BULLET_CSS = "list-style:none;margin:2px 0 6px;padding-left:24px";
 var BULLET_ITEM_CSS = "list-style:none;margin-bottom:4px";
 var HEXAGON_BULLET =
   "<span style=\"color:" + YELLOW + ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;";
@@ -75,16 +77,20 @@ function styleMerger(css) {
 
 // Any sub-list, numbered or not, becomes a hexagon bullet list; only top-level numbered lists keep numbers.
 function withHexagonBullets(html) {
-  var styleList = styleMerger(BULLET_LIST_CSS);
+  var styleTopList = styleMerger(BULLET_LIST_CSS);
+  var styleUnderNumber = styleMerger(SUBLIST_UNDER_NUMBER_CSS);
+  var styleUnderBullet = styleMerger(SUBLIST_UNDER_BULLET_CSS);
   var styleItem = styleMerger(BULLET_ITEM_CSS);
   var openLists = [];
   var marked = html.replace(LIST_TAGS, function (tag, closing, name, attrs) {
     name = name.toLowerCase();
     if (name !== "li") {
       if (closing) return "</" + (openLists.pop() || name) + ">";
-      var listName = openLists.length ? "ul" : name;
+      var parent = openLists[openLists.length - 1];
+      var listName = parent ? "ul" : name;
       openLists.push(listName);
-      return listName === "ul" ? styleList(tag, listName, attrs) : tag;
+      if (!parent) return listName === "ul" ? styleTopList(tag, listName, attrs) : tag;
+      return (parent === "ol" ? styleUnderNumber : styleUnderBullet)(tag, listName, attrs);
     }
     if (closing || openLists[openLists.length - 1] !== "ul") return tag;
     return styleItem(tag, name, attrs) + HEXAGON_BULLET;

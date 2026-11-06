@@ -236,8 +236,17 @@ var STATUS_COLORS = {
   "not started": LIGHT_GREY,
 };
 var STATUS_TAG = /\[(on track|done|completed?|at risk|in progress|off track|blocked|not started)\]/gi;
-var KEY_FIGURE =
-  /(?<![\w$€£.,])(?:[+\-−]\s?)?(?:[$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:K|M|B|bn|million|billion)\b)?|\d[\d,]*(?:\.\d+)?(?:\s?%|(?:K|M|B|bn)\b|\s(?:million|billion)\b))/g;
+// Money, percentages and big numbers; a range ("$14–16", "$14–$16", "10–20%") counts as one figure.
+var FIGURE_NUMBER = "\\d+(?:,\\d{3})*(?:\\.\\d+)?";
+var FIGURE_AMOUNT = "[$€£]\\s?" + FIGURE_NUMBER + "(?:\\s?(?:K|M|B|bn|million|billion)\\b)?";
+var FIGURE_RANGE = "\\s?[–-]\\s?";
+var KEY_FIGURE = new RegExp(
+  "(?<![\\w$€£.,])(?:[+\\-−]\\s?)?(?:" +
+    FIGURE_AMOUNT + "(?:" + FIGURE_RANGE + "(?:" + FIGURE_AMOUNT + "|" + FIGURE_NUMBER + "(?:\\s?(?:K|M|B|bn)\\b)?))?" +
+    "|" + FIGURE_NUMBER + "(?:" + FIGURE_RANGE + FIGURE_NUMBER + ")?\\s?%" +
+    "|" + FIGURE_NUMBER + "(?:(?:K|M|B|bn)\\b|\\s(?:million|billion)\\b))",
+  "g"
+);
 var FIGURE_LIMIT = 8;
 var INNERMOST_BLOCK = /<(div|p)\b([^>]*)>((?:(?!<\/?(?:div|p)\b)[\s\S])*?)<\/\1>/gi;
 var BOLD_RUN = /<(b|strong)\b[^>]*>[\s\S]*?<\/\1>|<span\b[^>]*font-weight\s*:\s*(?:bold|[6-9]00)[^>]*>[\s\S]*?<\/span>/gi;
@@ -710,7 +719,8 @@ function endOfList(html, from) {
 }
 
 // Outlook places a sub-list between items (<ol><li>..</li><ul>..</ul><li>..</li></ol>), not inside one,
-// so a sub-list found between items is attached to the item above it.
+// so a sub-list found between items is attached to the item above it. Pasted lists can also carry text
+// that isn't in any item (a line as a <div>, bare text, an unclosed <li>); that is kept with the item above.
 function topLevelItems(inner) {
   var tags = /<(\/?)(ul|ol|li)\b[^>]*>/gi;
   var items = [];
@@ -718,26 +728,104 @@ function topLevelItems(inner) {
   var depth = 0;
   var itemStart = -1;
   var subListStart = -1;
+  var cursor = 0;
   var match;
+  var attach = function (piece) {
+    if (items.length) items[items.length - 1] += piece;
+    else leading += piece;
+  };
+  var keepStray = function (to) {
+    var stray = inner.slice(cursor, to);
+    if (plainText(stray) || /<img\b/i.test(stray)) attach(stray);
+  };
+  var closeItem = function (at) {
+    items.push((items.length ? "" : leading) + inner.slice(itemStart, at));
+    itemStart = -1;
+  };
   while ((match = tags.exec(inner))) {
     var closing = match[1] === "/";
-    if (match[2].toLowerCase() !== "li") {
+    var isItem = match[2].toLowerCase() === "li";
+    if (depth === 0 && itemStart === -1 && !closing) keepStray(match.index);
+    if (!isItem) {
       if (!closing && depth === 0 && itemStart === -1) subListStart = match.index;
       depth += closing ? -1 : 1;
       if (closing && depth === 0 && subListStart !== -1) {
-        var subList = inner.slice(subListStart, tags.lastIndex);
-        if (items.length) items[items.length - 1] += subList;
-        else leading += subList;
+        attach(inner.slice(subListStart, tags.lastIndex));
         subListStart = -1;
+        cursor = tags.lastIndex;
       }
     } else if (depth === 0 && !closing) {
+      if (itemStart !== -1) closeItem(match.index);
       itemStart = tags.lastIndex;
     } else if (depth === 0 && itemStart !== -1) {
-      items.push((items.length ? "" : leading) + inner.slice(itemStart, match.index));
-      itemStart = -1;
+      closeItem(match.index);
+      cursor = tags.lastIndex;
     }
   }
+  if (itemStart !== -1) {
+    closeItem(inner.length);
+  } else {
+    keepStray(inner.length);
+  }
   return items;
+}
+
+// A list holding only other lists, with no item of its own: what Outlook makes of bullets indented twice.
+function isParentlessList(inner) {
+  if (topLevelItems(inner).length || !/<(?:ul|ol)\b/i.test(inner)) return false;
+  return !plainText(withoutLists(inner));
+}
+
+function withoutLists(html) {
+  return splitTopLevelLists(html)
+    .map(function (part) {
+      return part.inner === undefined ? part.text : "";
+    })
+    .join("");
+}
+
+function splitTopLevelLists(html) {
+  var openers = new RegExp(LIST_OPENER.source, "gi");
+  var parts = [];
+  var cursor = 0;
+  var open;
+  while ((open = openers.exec(html))) {
+    var close = endOfList(html, openers.lastIndex);
+    if (!close) break;
+    parts.push({ text: html.slice(cursor, open.index) });
+    parts.push({ open: html.slice(open.index, openers.lastIndex), inner: html.slice(openers.lastIndex, close.innerEnd), close: html.slice(close.innerEnd, close.end) });
+    cursor = close.end;
+    openers.lastIndex = close.end;
+  }
+  parts.push({ text: html.slice(cursor) });
+  return parts;
+}
+
+// Pasted sub-points often arrive as a parentless list right after the list they belong to (with only
+// empty wrappers in between); they are moved into that list so they sit under its last item.
+var ONLY_WRAPPERS = /^(?:\s|&nbsp;|<\/?(?:div|p|span)\b[^>]*>|<br\s*\/?>)*$/i;
+
+function attachParentlessLists(html) {
+  var parts = splitTopLevelLists(html);
+  var previous = null;
+  parts.forEach(function (part) {
+    if (part.inner === undefined) {
+      if (!ONLY_WRAPPERS.test(part.text)) previous = null;
+      return;
+    }
+    if (previous && isParentlessList(part.inner)) {
+      previous.inner += part.inner;
+      part.moved = true;
+      return;
+    }
+    previous = part;
+  });
+  return parts
+    .map(function (part) {
+      if (part.inner === undefined) return part.text;
+      return part.moved ? "" : part.open + part.inner + part.close;
+    })
+    .join("");
 }
 
 function listTable(rows, margin) {
@@ -759,7 +847,7 @@ function numberedTable(attrs, items) {
   return listTable(
     items.map(function (content) {
       return (
-        '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
+        '<tr><td width="' + (BADGE_SIZE + 12) + '" style="width:' + BADGE_SIZE + 'px;vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
         '<td style="' + NUMBERED_TEXT_CSS + '">' + itemText(content, 0) + "</td></tr>"
       );
     }),
@@ -786,9 +874,12 @@ function withListTables(html, nested, bulletDepth) {
   while ((open = openers.exec(html))) {
     var close = endOfList(html, openers.lastIndex);
     if (!close) break;
-    var items = topLevelItems(html.slice(openers.lastIndex, close.innerEnd));
+    var inner = html.slice(openers.lastIndex, close.innerEnd);
+    var items = topLevelItems(inner);
     var numbered = open[1].toLowerCase() === "ol" && !nested;
-    var table = !items.length ? html.slice(open.index, close.end) : numbered ? numberedTable(open[2], items) : bulletTable(items, bulletDepth || 0, nested);
+    var table;
+    if (items.length) table = numbered ? numberedTable(open[2], items) : bulletTable(items, bulletDepth || 0, nested);
+    else table = isParentlessList(inner) ? withListTables(inner, nested, bulletDepth) : html.slice(open.index, close.end);
     output += html.slice(cursor, open.index) + table;
     cursor = close.end;
     openers.lastIndex = close.end;
@@ -869,7 +960,39 @@ function brandTables(html) {
 }
 
 function restyleOwnPart(html) {
-  return withListTables(brandTables(smartFormat(brandText(markInsertedTables(html)))), false, 0);
+  return withListTables(attachParentlessLists(brandTables(smartFormat(brandText(markInsertedTables(html))))), false, 0);
+}
+
+// ---- Safety net: styling may move and decorate words, never drop them ----
+var STYLING_ONLY_WORDS = { kpi: true, kpis: true };
+
+function ownWords(html) {
+  var text = plainText(html.replace(/<(style|script|head)\b[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " "))
+    .toLowerCase()
+    .replace(/&[#\w]+;/g, " ")
+    .replace(/(?:https?:\/\/|www\.)\S+/g, " ");
+  return text.split(/[^a-z0-9À-ɏ]+/).filter(function (word) {
+    return word && !STYLING_ONLY_WORDS[word];
+  });
+}
+
+function keepsWords(before, after) {
+  var available = {};
+  ownWords(after).forEach(function (word) {
+    available[word] = (available[word] || 0) + 1;
+  });
+  return ownWords(before).every(function (word) {
+    return available[word]-- > 0;
+  });
+}
+
+// If full styling would lose any of the sender's words, fall back to fonts and colours only;
+// if even that would, the text goes exactly as written.
+function safeRestyle(html) {
+  var styled = restyleOwnPart(html);
+  if (keepsWords(html, styled)) return styled;
+  var basic = brandText(html);
+  return keepsWords(html, basic) ? basic : html;
 }
 
 // ---- Frame: brand bar and signature ----
@@ -1000,14 +1123,14 @@ function styleEmail(html) {
   if (signatureAt !== -1) {
     var from = Math.min(textStart(ownPart), signatureAt);
     return {
-      html: ownPart.slice(0, from) + restyleOwnPart(ownPart.slice(from, signatureAt)) + ownPart.slice(signatureAt) + quoted,
+      html: ownPart.slice(0, from) + safeRestyle(ownPart.slice(from, signatureAt)) + ownPart.slice(signatureAt) + quoted,
       framed: false,
     };
   }
   var details = signatureDetails();
   var signature = featureSettings().shortReplies && signedEarlierInThread(quoted, details.name) ? shortSignatureHtml(details) : signatureHtml(details);
   return {
-    html: insertAfterBodyTag(restyleOwnPart(ownPart), brandBarHtml()) + signature + quoted,
+    html: insertAfterBodyTag(safeRestyle(ownPart), brandBarHtml()) + signature + quoted,
     framed: true,
   };
 }

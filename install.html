@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Versatex Email Style</title>
+  <style>
+    @font-face { font-family: "Roboto"; font-weight: 400; src: url("fonts/roboto-latin-400-normal.woff2") format("woff2"); }
+    @font-face { font-family: "Roboto"; font-weight: 700; src: url("fonts/roboto-latin-700-normal.woff2") format("woff2"); }
+    @font-face { font-family: "Roboto"; font-weight: 900; src: url("fonts/roboto-latin-900-normal.woff2") format("woff2"); }
+
+    :root {
+      --ink: #231f20;
+      --yellow: #fdc00f;
+      --grey-80: #58595b;
+      --grey-40: #a7a9ac;
+      --grey-20: #d3d2d2;
+      --grey-05: #f4f4f4;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.6 Roboto, "Segoe UI", Arial, sans-serif; }
+
+    .band { position: relative; background: var(--ink); padding: 18px 16px; }
+    .band::after { content: ""; position: absolute; left: 9%; right: 0; bottom: -4px; height: 4px; background: var(--yellow); }
+    .band img { display: block; height: 28px; width: auto; }
+    .band-inner { max-width: 720px; margin: 0 auto; }
+
+    main { max-width: 720px; margin: 0 auto; padding: 36px 16px 56px; }
+    h1 { margin: 0 0 8px; font-size: 30px; font-weight: 900; line-height: 1.15; }
+    .lead { margin: 0 0 8px; font-size: 17px; color: var(--grey-80); }
+    h2 { margin: 44px 0 14px; font-size: 19px; font-weight: 900; }
+    h2::before { content: ""; display: block; width: 28px; height: 3px; margin-bottom: 10px; background: var(--yellow); }
+
+    .gets { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+    .gets li { background: var(--grey-05); border-top: 3px solid var(--yellow); padding: 12px 14px; font-size: 14px; color: var(--grey-80); }
+    .gets b { display: block; color: var(--ink); font-size: 15px; }
+
+    .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+    .steps > li { position: relative; padding: 0 0 22px 46px; counter-increment: step; }
+    .steps > li::before {
+      content: counter(step); position: absolute; left: 0; top: 1px; width: 28px; height: 28px;
+      background: var(--yellow); color: var(--ink); font-weight: 900; font-size: 14px; line-height: 28px; text-align: center;
+    }
+    .steps b { font-weight: 700; }
+    .path { display: inline; font-weight: 700; }
+    .path span { color: var(--grey-40); font-weight: 400; padding: 0 4px; }
+
+    .download {
+      display: inline-block; margin-top: 8px; padding: 11px 20px; background: var(--ink); color: var(--paper); text-decoration: none;
+      font-weight: 700; font-size: 15px; border-bottom: 3px solid var(--yellow);
+    }
+    .download:hover { background: var(--grey-80); }
+    .download:focus-visible, a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    a { color: var(--ink); text-decoration-color: var(--yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+    .note { margin: 6px 0 0; font-size: 13.5px; color: var(--grey-80); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+    th { text-align: left; background: var(--ink); color: var(--paper); font-weight: 700; padding: 9px 12px; border-bottom: 3px solid var(--yellow); }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--grey-20); vertical-align: top; }
+    tr:nth-child(even) td { background: var(--grey-05); }
+    td:first-child { width: 48%; }
+    code { font: 700 13.5px Roboto, Arial, sans-serif; background: var(--grey-05); padding: 1px 5px; border-radius: 2px; }
+    tr:nth-child(even) code { background: var(--paper); }
+
+    .where { margin: 0; padding-left: 18px; }
+    .where li { margin: 4px 0; }
+
+    footer { max-width: 720px; margin: 0 auto; padding: 0 16px 40px; font-size: 13px; color: var(--grey-80); }
+
+    @media (max-width: 520px) {
+      h1 { font-size: 25px; }
+      td:first-child { width: auto; }
+      table, tbody, tr, td { display: block; width: 100%; }
+      thead { display: none; }
+      td { border-bottom: 0; padding: 4px 12px; }
+      td:first-child { padding-top: 12px; }
+      tr { border-bottom: 1px solid var(--grey-20); padding-bottom: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="band"><div class="band-inner"><img src="assets/vstx-horizontal-light.png" alt="Versatex" /></div></header>
+
+  <main>
+    <h1>Versatex Email Style</h1>
+    <p class="lead">An Outlook add-in that gives every email and meeting invite you send the Versatex look, automatically, when you select Send.</p>
+
+    <h2>What you get</h2>
+    <ul class="gets">
+      <li><b>Brand frame</b>The Versatex bar on top and your signature at the bottom; a one-line signature on later replies in a thread.</li>
+      <li><b>Tidy lists and tables</b>Hexagon bullets, yellow number badges, branded tables.</li>
+      <li><b>Smart formatting</b>Headings, callouts, KPI tiles, timed agendas, @mention tags, link buttons and status tags from simple typing.</li>
+      <li><b>Attachment reminder</b>If you write "attached" but forgot the file, Send asks first.</li>
+    </ul>
+
+    <h2>Install it (about 3 minutes)</h2>
+    <ol class="steps">
+      <li>
+        <b>Download the add-in file.</b><br />
+        <a class="download" href="manifest.xml" download="versatex-email-style.xml">Download versatex-email-style.xml</a>
+      </li>
+      <li>
+        <b>Open the add-ins page:</b> go to <a href="https://aka.ms/olksideload">aka.ms/olksideload</a>. Outlook on the web opens, and after a few seconds the <b>Add-Ins for Outlook</b> window appears.
+      </li>
+      <li>
+        Select <span class="path">My add-ins</span>, scroll to <span class="path">Custom Addins</span> at the bottom, then
+        <span class="path">Add a custom add-in<span>&rsaquo;</span>Add from File</span>. Choose the file you downloaded and accept the prompts.
+      </li>
+      <li>
+        <b>Restart New Outlook</b>, or refresh Outlook on the web.
+      </li>
+      <li>
+        <b>Set up your signature.</b> Start a new email: a banner asks you to <b>Finish your Versatex signature</b>. Select <b>Open settings</b>, check your name, add your title and phone, and save.
+        <p class="note">You can come back any time: in a new email, open <span class="path">Apps<span>&rsaquo;</span>Versatex settings</span>.</p>
+      </li>
+    </ol>
+
+    <h2>Type this, get this</h2>
+    <table>
+      <thead><tr><th>You type</th><th>Recipients see</th></tr></thead>
+      <tbody>
+        <tr><td>A short line in <b>bold</b>, on its own</td><td>A section heading with a yellow rule</td></tr>
+        <tr><td><code>Action:</code> <code>Decision:</code> <code>Deadline:</code> <code>Note:</code> at the start of a line</td><td>A labelled callout row</td></tr>
+        <tr><td><code>KPI: Spend $4.1M -8% [On track] | Margin 18%</code></td><td>A row of big-number tiles; colour only where you add a status tag</td></tr>
+        <tr><td><code>10:00 Welcome</code><br /><code>10:15-10:45 Q3 review</code></td><td>A timed agenda with durations (2 or more lines)</td></tr>
+        <tr><td><code>@</code> and pick a colleague</td><td>Their name as a tag; they're still notified</td></tr>
+        <tr><td>A link on its own line</td><td>A button such as "Open Power BI report"</td></tr>
+        <tr><td><code>[On track]</code> <code>[At risk]</code> <code>[Done]</code> <code>[Blocked]</code></td><td>A small coloured status tag</td></tr>
+        <tr><td><code>6%</code> <code>$1.2M</code></td><td>Key figures in bold with a yellow marker</td></tr>
+        <tr><td><code>[review]</code> in the subject</td><td>Send pauses once so you can check the result</td></tr>
+        <tr><td><code>[plain]</code> in the subject</td><td>The email goes exactly as typed</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Every feature can be switched off in Versatex settings.</p>
+
+    <h2>Good to know</h2>
+    <ul class="where">
+      <li>Works in <b>Outlook on the web</b> and <b>New Outlook for Windows</b>. Emails sent from the Outlook phone app go out unstyled.</li>
+      <li>Recipients don't need anything installed: the styling is part of the email, and it holds up in classic Outlook and on phones.</li>
+      <li>Your quoted thread is never changed; only the part you wrote.</li>
+      <li>To remove it, open <a href="https://aka.ms/olksideload">aka.ms/olksideload</a>, go to <span class="path">My add-ins<span>&rsaquo;</span>Custom Addins</span>, choose <b>&hellip;</b> next to Versatex Email Style, then <b>Remove</b>.</li>
+    </ul>
+  </main>
+
+  <footer>Versatex Email Style &middot; built by Analytics &amp; AI Solutions</footer>
+</body>
+</html>

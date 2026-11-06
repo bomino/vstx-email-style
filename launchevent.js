@@ -3,7 +3,6 @@ var VSTX_BAR_ID = "vstx-bar";
 var VSTX_LIST_CLASS = "vstx-list";
 var VSTX_TABLE_CLASS = "vstx-table";
 var SIGNATURE_SETTINGS_KEY = "vstxSignature";
-var SIGNATURE_DEFAULTS = { name: "Lawali", title: "Analytics & AI Solutions", phone: "513-639-8829" };
 var FEATURES_SETTINGS_KEY = "vstxFeatures";
 var FEATURE_DEFAULTS = {
   headings: true,
@@ -12,6 +11,8 @@ var FEATURE_DEFAULTS = {
   buttons: true,
   statuses: true,
   kpis: true,
+  mentions: true,
+  agenda: true,
   shortReplies: true,
   attachmentCheck: true,
 };
@@ -247,6 +248,7 @@ var KPI_LINE = /^kpis?\s*:\s*\S/i;
 var KPI_LABEL = /^kpis?\s*:\s*/i;
 // Three tiles is the most a phone screen fits without scrolling sideways.
 var KPI_PER_ROW = 3;
+var AGENDA_TIME_WIDTH = 110;
 var KPI_GAP = 2;
 var NUMBER_BODY =
   "(?:[$€£]\\s?)?\\d[\\d,]*(?:\\.\\d+)?" +
@@ -343,7 +345,7 @@ function asCallout(inner, text) {
     "<tr>" + ruleCell(8, "", ' colspan="2"') + "</tr><tr>" +
     '<td class="vstx-callout-label" width="' + CALLOUT_LABEL_WIDTH + '" bgcolor="' + labelFill + '" style="width:' + CALLOUT_LABEL_WIDTH + "px;background:" + labelFill + ";padding:9px 12px;vertical-align:top;white-space:nowrap" +
     ";border-left:4px solid " + (spec.strong ? YELLOW : labelFill) + '">' +
-    '<span style="font-family:' + FONT_STACK + ';font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#ffffff">' + spec.label + "</span></td>" +
+    '<span style="font-family:' + FONT_STACK + ';font-size:11px;font-weight:900;letter-spacing:.08em;color:#ffffff">' + spec.label.toUpperCase() + "</span></td>" +
     '<td bgcolor="' + PANEL + '" style="background:' + PANEL + ';padding:9px 14px;vertical-align:top">' +
     '<div class="vstx-callout-text" style="' + BODY_TEXT + '">' + body + "</div></td>" +
     "</tr></table>"
@@ -380,8 +382,8 @@ function kpiTile(kpi, width) {
   var lines = [];
   if (kpi.label) {
     lines.push(
-      '<div class="vstx-kpi-label" style="' + text + "font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:" + GREY + ';line-height:1.35">' +
-        escapeHtml(kpi.label) + "</div>"
+      '<div class="vstx-kpi-label" style="' + text + "font-size:11px;font-weight:700;letter-spacing:.06em;color:" + GREY + ';line-height:1.35">' +
+        escapeHtml(kpi.label.toUpperCase()) + "</div>"
     );
   }
   lines.push(
@@ -561,9 +563,114 @@ function markKeyFigures(html) {
   });
 }
 
+// ---- @mentions ----
+// Outlook's mention is a mailto link whose id (OWAAM…) and address drive the "you were mentioned" notice,
+// so the link itself is never changed: only its look, plus a styled wrapper around the name.
+var MENTION_LINK = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+var MAILTO_HREF = /\bhref\s*=\s*["']?mailto:/i;
+var OUTLOOK_MENTION_ID = /\bid\s*=\s*["']?(?:x_)?OWAAM/i;
+
+function markMentions(html) {
+  return html.replace(MENTION_LINK, function (link, attrs, inner) {
+    if (!MAILTO_HREF.test(attrs) || /vstx-mention/.test(inner)) return link;
+    if (!OUTLOOK_MENTION_ID.test(attrs) && plainText(inner).charAt(0) !== "@") return link;
+    var opening = mergeStyle("<a" + attrs + ">", "a", attrs, "color:" + INK + ";text-decoration:none");
+    return (
+      opening +
+      '<span class="vstx-mention" style="font-family:' + FONT_STACK + ";font-weight:700;color:" + INK + ";background:" + PANEL +
+      ";border-bottom:2px solid " + YELLOW + ';padding:0 4px;white-space:nowrap">' + inner + "</span></a>"
+    );
+  });
+}
+
+// ---- Timed agenda ----
+// Colon times only: "1.50 per unit" on two lines must not become an agenda.
+var CLOCK = "\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m\\.?)?";
+var AGENDA_LINE = new RegExp("^(" + CLOCK + ")(?:\\s*(?:-|–|—|to)\\s*(" + CLOCK + "))?(?=[\\s\\-–—:|•·])\\s*(?:[-–—:|•·]\\s*)?(\\S[\\s\\S]*)$", "i");
+var AGENDA_PREFIX = new RegExp("^((?:\\s|<[^>]+>)*)" + CLOCK + "(?:\\s*(?:-|–|—|to)\\s*" + CLOCK + ")?\\s*(?:[-–—:|•·]\\s*)?", "i");
+
+// "9:30", "9:30am", "2pm" -> minutes after midnight; a bare "9" isn't a time.
+function clockMinutes(text) {
+  var match = /^(\d{1,2})(?::(\d{2}))?\s*([ap])?/i.exec(text.trim());
+  if (!match || (!match[2] && !match[3])) return null;
+  var hour = parseInt(match[1], 10);
+  var minute = match[2] ? parseInt(match[2], 10) : 0;
+  if (hour > 23 || minute > 59 || (match[3] && hour > 12)) return null;
+  if (match[3]) hour = (hour % 12) + (match[3].toLowerCase() === "p" ? 12 : 0);
+  return hour * 60 + minute;
+}
+
+function agendaEntry(inner) {
+  var parts = AGENDA_LINE.exec(plainText(inner));
+  if (!parts) return null;
+  var start = clockMinutes(parts[1]);
+  var end = parts[2] ? clockMinutes(parts[2]) : null;
+  if (start === null || (parts[2] && end === null)) return null;
+  var item = inner.replace(AGENDA_PREFIX, "$1");
+  if (item === inner || !plainText(item)) return null;
+  var length = end !== null && end > start && end - start <= 720 ? end - start : null;
+  return { from: parts[1].trim(), to: parts[2] ? parts[2].trim() : "", length: length, item: item };
+}
+
+function formatLength(minutes) {
+  var hours = Math.floor(minutes / 60);
+  var rest = minutes % 60;
+  return (hours ? hours + " h" : "") + (hours && rest ? " " : "") + (rest ? rest + " min" : "");
+}
+
+function agendaTable(entries) {
+  var text = "font-family:" + FONT_STACK + ";";
+  var rows = entries.map(function (entry) {
+    var clock = escapeHtml(entry.from) + (entry.to ? "&#8211;" + escapeHtml(entry.to) : "");
+    var length = entry.length
+      ? '<div class="vstx-agenda-length" style="' + text + "font-size:12px;color:" + GREY + ';line-height:1.4">' + formatLength(entry.length) + "</div>"
+      : "";
+    return (
+      "<tr>" +
+      '<td class="vstx-agenda-time" width="' + AGENDA_TIME_WIDTH + '" bgcolor="' + PANEL + '" style="width:' + AGENDA_TIME_WIDTH + "px;background:" + PANEL +
+      ";border-left:3px solid " + YELLOW + ";border-bottom:2px solid #ffffff;padding:8px 12px;vertical-align:top;white-space:nowrap\">" +
+      '<div class="vstx-agenda-clock" style="' + text + "font-size:14px;font-weight:700;color:" + INK + ';line-height:1.4">' + clock + "</div>" + length + "</td>" +
+      '<td style="padding:8px 14px;vertical-align:top;border-bottom:1px solid ' + HAIRLINE + '">' +
+      '<div class="vstx-agenda-text" style="' + BODY_TEXT + '">' + entry.item + "</div></td>" +
+      "</tr>"
+    );
+  });
+  return (
+    '<table class="vstx-agenda" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+    "<tr>" + ruleCell(8, "", ' colspan="2"') + "</tr>" + rows.join("") + "<tr>" + ruleCell(6, "", ' colspan="2"') + "</tr></table>"
+  );
+}
+
+// Two or more lines in a row that start with a time become an agenda; a single "10:00 call" stays a sentence.
+function withAgenda(html) {
+  var blocks = new RegExp(INNERMOST_BLOCK.source, "gi");
+  var runs = [];
+  var run = [];
+  var match;
+  var closeRun = function () {
+    if (run.length >= 2) runs.push(run);
+    run = [];
+  };
+  while ((match = blocks.exec(html))) {
+    var entry = OWN_MARKUP.test(match[2]) || insideStructure(html, match.index) ? null : agendaEntry(match[3]);
+    var adjacent = run.length && !html.slice(run[run.length - 1].end, match.index).trim();
+    if (!entry || !adjacent) closeRun();
+    if (entry) run.push({ start: match.index, end: blocks.lastIndex, entry: entry });
+  }
+  closeRun();
+  for (var i = runs.length - 1; i >= 0; i--) {
+    var first = runs[i][0];
+    var last = runs[i][runs[i].length - 1];
+    html = html.slice(0, first.start) + agendaTable(runs[i].map(function (line) { return line.entry; })) + html.slice(last.end);
+  }
+  return html;
+}
+
 function smartFormat(html) {
   var features = featureSettings();
-  var result = smartBlocks(html, features);
+  var result = features.agenda ? withAgenda(html) : html;
+  result = smartBlocks(result, features);
+  if (features.mentions) result = markMentions(result);
   if (features.statuses) result = markStatuses(result);
   if (features.figures) result = markKeyFigures(result);
   return result;
@@ -776,12 +883,32 @@ function brandBarHtml() {
   );
 }
 
+// The directory lists people as "Last, First"; a signature reads "First Last".
+function profileName() {
+  var profile = typeof Office !== "undefined" && Office.context && Office.context.mailbox && Office.context.mailbox.userProfile;
+  if (!profile) return "";
+  var display = (profile.displayName || "").trim();
+  var lastFirst = /^([^,]+),\s*(.+)$/.exec(display);
+  if (lastFirst) return lastFirst[2] + " " + lastFirst[1];
+  return display || (profile.emailAddress || "").split("@")[0];
+}
+
+// Until someone saves their own details, the signature carries just their name from Outlook.
+function signatureDefaults() {
+  return { name: profileName(), title: "", phone: "" };
+}
+
+function isSignatureSetUp() {
+  return typeof roamingValue(SIGNATURE_SETTINGS_KEY).name === "string";
+}
+
 function signatureDetails() {
   var saved = roamingValue(SIGNATURE_SETTINGS_KEY);
+  var defaults = signatureDefaults();
   var pick = function (key) {
-    return typeof saved[key] === "string" ? saved[key].trim() : SIGNATURE_DEFAULTS[key];
+    return typeof saved[key] === "string" ? saved[key].trim() : defaults[key];
   };
-  return { name: pick("name") || SIGNATURE_DEFAULTS.name, title: pick("title"), phone: pick("phone") };
+  return { name: pick("name") || defaults.name, title: pick("title"), phone: pick("phone") };
 }
 
 function signatureLines(details) {
@@ -836,6 +963,7 @@ function shortSignatureHtml(details) {
 }
 
 function signedEarlierInThread(quoted, name) {
+  if (!name) return false;
   var signature = new RegExp(VSTX_SIGNATURE_ID + "[\\s\\S]{0,3000}?>\\s*" + escapeHtml(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*<", "i");
   return signature.test(quoted);
 }
@@ -1031,6 +1159,47 @@ function onMessageSendHandler(event) {
     });
 }
 
+var SETTINGS_BUTTON = { message: "vstxSettingsButton", appointment: "vstxMeetingSettingsButton" };
+
+// First use: until someone saves their details, each new email offers a one-click way to the settings pane.
+function onNewComposeHandler(event) {
+  if (isSignatureSetUp() || !Office.context.requirements.isSetSupported("Mailbox", "1.10")) {
+    event.completed();
+    return;
+  }
+  var item = Office.context.mailbox.item;
+  var isInvite = item.itemType === Office.MailboxEnums.ItemType.Appointment;
+  var done = function () {
+    event.completed();
+  };
+  try {
+    showSetupPrompt(item, isInvite ? SETTINGS_BUTTON.appointment : SETTINGS_BUTTON.message, done);
+  } catch (error) {
+    // A prompt Outlook rejects is skipped; the email itself is unaffected.
+    done();
+  }
+}
+
+function showSetupPrompt(item, commandId, done) {
+  item.notificationMessages.replaceAsync(
+    "vstx-setup",
+    {
+      type: Office.MailboxEnums.ItemNotificationMessageType.InsightMessage,
+      message: "Finish your Versatex signature: add your title and phone once, and every email carries it.",
+      icon: "Icon.16x16",
+      actions: [
+        {
+          actionText: "Open settings",
+          actionType: Office.MailboxEnums.ActionType.ShowTaskPane,
+          commandId: commandId,
+          contextData: "{}",
+        },
+      ],
+    },
+    done
+  );
+}
+
 function notify(message) {
   return callAsync(function (done) {
     Office.context.mailbox.item.notificationMessages.replaceAsync(
@@ -1072,4 +1241,5 @@ function previewStyle(event) {
 if (typeof VSTX_SETTINGS_PANE === "undefined") {
   Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
   Office.actions.associate("previewStyle", previewStyle);
+  Office.actions.associate("onNewComposeHandler", onNewComposeHandler);
 }

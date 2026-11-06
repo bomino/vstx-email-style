@@ -6,7 +6,7 @@
   <title>Versatex settings</title>
   <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script type="text/javascript">var VSTX_SETTINGS_PANE = true;</script>
-  <script type="text/javascript" src="launchevent.js?v=25"></script>
+  <script type="text/javascript" src="launchevent.js?v=26"></script>
   <style>
     @font-face { font-family: "Roboto"; font-weight: 400; src: url("fonts/roboto-latin-400-normal.woff2") format("woff2"); }
     @font-face { font-family: "Roboto"; font-weight: 700; src: url("fonts/roboto-latin-700-normal.woff2") format("woff2"); }
@@ -43,6 +43,9 @@
     .preview { margin-top: 4px; border: 1px solid var(--grey-20); overflow: hidden; }
     .preview > table > tbody > tr:first-child { display: none; }
     .preview-short { padding: 10px 12px; }
+
+    .welcome { margin: 0 0 22px; padding: 12px 14px; background: var(--grey-05); border-left: 4px solid var(--yellow); font-size: 13.5px; }
+    .welcome strong { display: block; margin-bottom: 2px; }
 
     .save {
       width: 100%; margin-top: 20px; padding: 11px 16px; border: 2px solid var(--ink); border-radius: 2px;
@@ -84,6 +87,11 @@
 <body>
   <header class="band"><img src="assets/vstx-horizontal-light.png" alt="Versatex" /></header>
   <main>
+    <div class="welcome" id="welcome" hidden>
+      <strong>Welcome to Versatex Email Style.</strong>
+      Check your name, add your title and phone, then select Save. Every email you send after that carries your signature.
+    </div>
+
     <h1>Your email signature</h1>
     <p class="lead">Added to every email and invite the add-in styles. Leave the title or phone empty to hide that line.</p>
 
@@ -159,6 +167,20 @@
           <p class="feature-how" id="kpis-how">One line, metrics split by <code>|</code>: <code>KPI: Spend $4.1M -8% [On track] | Margin 18%</code>. Arrows show the direction; add a status tag when you want green, amber or red.</p>
         </div>
       </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="mentions" aria-describedby="mentions-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="mentions">@mention name tags</label>
+          <p class="feature-how" id="mentions-how">Type <code>@</code> and pick a colleague as usual; their name becomes a tag. They're still notified.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="agenda" aria-describedby="agenda-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="agenda">Timed agenda</label>
+          <p class="feature-how" id="agenda-how">Two or more lines in a row that start with a time: <code>10:00 Welcome</code> <code>10:15-10:45 Q3 review</code></p>
+        </div>
+      </div>
       </div>
 
       <h2>Before sending</h2>
@@ -198,7 +220,7 @@
 
       function render() {
         var details = current();
-        var shown = { name: details.name || SIGNATURE_DEFAULTS.name, title: details.title, phone: details.phone };
+        var shown = { name: details.name || signatureDefaults().name, title: details.title, phone: details.phone };
         preview.innerHTML = signatureHtml(shown);
         shortPreview.innerHTML = shortSignatureHtml(shown);
         save.disabled = !details.name;
@@ -212,6 +234,7 @@
         return features;
       }
 
+      document.getElementById("welcome").hidden = isSignatureSetUp();
       var saved = signatureDetails();
       fields[0].value = saved.name;
       fields[1].value = saved.title;

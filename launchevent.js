@@ -21,9 +21,11 @@ var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
 var BULLET_ITEM_CSS = "margin-bottom:4px";
 var HEXAGON_BULLET =
   "<span style=\"color:" + YELLOW + ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;";
-var NUMBER_CELL_CSS =
-  "vertical-align:top;width:18px;padding:0 10px 6px 2px;font-family:" + FONT_STACK + ";font-size:15px;line-height:1.6;font-weight:900;color:" + INK;
-var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 6px 10px;border-left:2px solid " + YELLOW;
+var BADGE_SIZE = 22;
+var BADGE_CSS =
+  "width:" + BADGE_SIZE + "px;height:" + BADGE_SIZE + "px;background:" + YELLOW + ";font-family:" + FONT_STACK +
+  ";font-size:12px;font-weight:900;color:" + INK + ";line-height:" + BADGE_SIZE + "px;text-align:center";
+var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 8px";
 var REVIEW_TAG = "[review]";
 var TEXT_TAGS = /<(p|li|div|span|td|font)(\s[^>]*)?>/gi;
 var HEADING_TAGS = /<(h[1-6])(\s[^>]*)?>/gi;
@@ -82,6 +84,14 @@ function withHexagonBullets(list) {
   });
 }
 
+function numberBadge(number) {
+  return (
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>' +
+    '<td width="' + BADGE_SIZE + '" height="' + BADGE_SIZE + '" align="center" bgcolor="' + YELLOW + '" style="' + BADGE_CSS + '">' + number + "</td>" +
+    "</tr></table>"
+  );
+}
+
 function asNumberedTable(list, attrs, inner) {
   if (/<(ol|ul)\b/i.test(inner)) return list;
   var start = /\bstart=["']?(\d+)/i.exec(attrs || "");
@@ -89,14 +99,14 @@ function asNumberedTable(list, attrs, inner) {
   var rows = [];
   inner.replace(LIST_ITEM_CONTENT, function (_item, content) {
     rows.push(
-      '<tr><td style="' + NUMBER_CELL_CSS + '">' + number++ + "</td>" +
+      '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
       '<td style="' + NUMBERED_TEXT_CSS + '">' + content + "</td></tr>"
     );
     return "";
   });
   if (!rows.length) return list;
   return (
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:6px 0 12px">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 12px">' +
     rows.join("") +
     "</table>"
   );

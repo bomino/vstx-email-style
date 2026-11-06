@@ -6,7 +6,7 @@
   <title>Versatex settings</title>
   <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script type="text/javascript">var VSTX_SETTINGS_PANE = true;</script>
-  <script type="text/javascript" src="launchevent.js?v=24"></script>
+  <script type="text/javascript" src="launchevent.js?v=25"></script>
   <style>
     @font-face { font-family: "Roboto"; font-weight: 400; src: url("fonts/roboto-latin-400-normal.woff2") format("woff2"); }
     @font-face { font-family: "Roboto"; font-weight: 700; src: url("fonts/roboto-latin-700-normal.woff2") format("woff2"); }
@@ -41,7 +41,8 @@
     input:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
 
     .preview { margin-top: 4px; border: 1px solid var(--grey-20); overflow: hidden; }
-    .preview > table { margin-top: 0 !important; }
+    .preview > table > tbody > tr:first-child { display: none; }
+    .preview-short { padding: 10px 12px; }
 
     .save {
       width: 100%; margin-top: 20px; padding: 11px 16px; border: 2px solid var(--ink); border-radius: 2px;
@@ -96,8 +97,21 @@
       <label for="phone">Phone</label>
       <input id="phone" name="phone" maxlength="40" autocomplete="tel" inputmode="tel" />
 
-      <label>Preview</label>
+      <label>New emails</label>
       <div class="preview" id="preview"></div>
+
+      <label>Replies in a thread you've already signed</label>
+      <div class="preview preview-short" id="preview-short"></div>
+
+      <div class="features">
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="shortReplies" aria-describedby="shortReplies-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="shortReplies">Short signature on replies</label>
+          <p class="feature-how" id="shortReplies-how">Your first email in a thread gets the full signature; later replies get the one-line version.</p>
+        </div>
+      </div>
+      </div>
 
       <h2>Smart formatting</h2>
       <p class="lead">Type naturally. These patterns turn into designed elements when you send.</p>
@@ -138,6 +152,24 @@
           <p class="feature-how" id="statuses-how"><code>[On track]</code> <code>[At risk]</code> <code>[Off track]</code> <code>[Done]</code> <code>[Blocked]</code> <code>[In progress]</code></p>
         </div>
       </div>
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="kpis" aria-describedby="kpis-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="kpis">KPI tiles</label>
+          <p class="feature-how" id="kpis-how">One line, metrics split by <code>|</code>: <code>KPI: Spend $4.1M -8% [On track] | Margin 18%</code>. Arrows show the direction; add a status tag when you want green, amber or red.</p>
+        </div>
+      </div>
+      </div>
+
+      <h2>Before sending</h2>
+      <div class="features">
+      <div class="feature">
+        <input class="switch" type="checkbox" role="switch" id="attachmentCheck" aria-describedby="attachmentCheck-how" />
+        <div class="feature-text">
+          <label class="feature-name" for="attachmentCheck">Attachment reminder</label>
+          <p class="feature-how" id="attachmentCheck-how">If your email says "attached" but nothing is, Send asks first. A shared SharePoint or OneDrive link counts as attached.</p>
+        </div>
+      </div>
       </div>
 
       <h2>Subject tags</h2>
@@ -156,6 +188,7 @@
       var form = document.getElementById("signature-form");
       var fields = ["name", "title", "phone"].map(function (id) { return document.getElementById(id); });
       var preview = document.getElementById("preview");
+      var shortPreview = document.getElementById("preview-short");
       var save = document.getElementById("save");
       var status = document.getElementById("status");
 
@@ -165,11 +198,9 @@
 
       function render() {
         var details = current();
-        preview.innerHTML = signatureHtml({
-          name: details.name || SIGNATURE_DEFAULTS.name,
-          title: details.title,
-          phone: details.phone,
-        });
+        var shown = { name: details.name || SIGNATURE_DEFAULTS.name, title: details.title, phone: details.phone };
+        preview.innerHTML = signatureHtml(shown);
+        shortPreview.innerHTML = shortSignatureHtml(shown);
         save.disabled = !details.name;
       }
 

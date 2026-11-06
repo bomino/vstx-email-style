@@ -5,7 +5,16 @@ var VSTX_TABLE_CLASS = "vstx-table";
 var SIGNATURE_SETTINGS_KEY = "vstxSignature";
 var SIGNATURE_DEFAULTS = { name: "Lawali", title: "Analytics & AI Solutions", phone: "513-639-8829" };
 var FEATURES_SETTINGS_KEY = "vstxFeatures";
-var FEATURE_DEFAULTS = { headings: true, callouts: true, figures: true, buttons: true, statuses: true };
+var FEATURE_DEFAULTS = {
+  headings: true,
+  callouts: true,
+  figures: true,
+  buttons: true,
+  statuses: true,
+  kpis: true,
+  shortReplies: true,
+  attachmentCheck: true,
+};
 var OWN_MARKUP = /\bvstx-/;
 var ASSET_BASE = "https://bomino.github.io/vstx-email-style/assets/";
 var LOGO_URL = ASSET_BASE + "vstx-logo-v2.png";
@@ -24,10 +33,8 @@ var HAIRLINE = "#e6e7e8";
 var BODY_SIZE = "15px";
 var BODY_LINE_HEIGHT = "1.6";
 var BODY_TEXT = "font-family:" + FONT_STACK + ";color:" + INK + ";font-size:" + BODY_SIZE + ";line-height:" + BODY_LINE_HEIGHT;
-var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
-var SUBLIST_UNDER_NUMBER_CSS = "list-style:none;margin:6px 0 4px;padding-left:0";
-var SUBLIST_UNDER_BULLET_CSS = "list-style:none;margin:2px 0 6px;padding-left:24px";
-var BULLET_ITEM_CSS = "list-style:none;margin-bottom:4px";
+var BULLET_SIZE = 18;
+var BULLET_COLUMN = 22;
 var BADGE_SIZE = 22;
 var BADGE_CSS =
   "width:" + BADGE_SIZE + "px;height:" + BADGE_SIZE + "px;background:" + YELLOW + ";font-family:" + FONT_STACK +
@@ -40,9 +47,8 @@ var TEXT_TAGS = /<(\/?)(table|p|li|div|span|font|td|th|h[1-6])\b([^>]*)>/gi;
 var BLOCK_TAGS = /^(p|li|div)$/;
 var HEADING_TAGS = /^h[1-6]$/;
 var MONOSPACE = /consolas|courier|monaco|menlo|cascadia|lucida console|monospace/i;
-var LIST_TAGS = /<(\/?)(ul|ol|li)\b([^>]*)>/gi;
-var BULLET_BEFORE_BLOCK = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(\s*<(?:div|p)\b[^>]*>)/gi;
-var REPEATED_BULLETS = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(?:\s*<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)+/gi;
+var LIST_OPENER = /<(ul|ol)\b([^>]*)>/gi;
+var LEADING_HEXAGONS = /^((?:\s|<(?:div|p|span)\b[^>]*>)*)(?:<span\b[^>]*>&#11042;<\/span>(?:&nbsp;|\s)*)+/i;
 var STYLE_ATTR = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i;
 var TABLE_CSS = "border-collapse:collapse;margin:8px 0 14px";
 var HEADER_CELL_CSS =
@@ -236,7 +242,17 @@ var BOLD_RUN = /<(b|strong)\b[^>]*>[\s\S]*?<\/\1>|<span\b[^>]*font-weight\s*:\s*
 var BOLD_STYLE = /font-weight\s*:\s*(?:bold|[6-9]00)/i;
 var NOT_HEADINGS = /^(hi|hello|hey|dear|thanks|thank you|regards|best|best regards|kind regards|cheers|sincerely)\b/i;
 var LONE_LINK = /^((?:\s|&nbsp;|<(?!a\b)[^>]+>)*)<a\b([^>]*)>([\s\S]*?)<\/a>((?:\s|&nbsp;|<(?!a\b)[^>]+>)*)$/i;
-var COMPONENT_MARKUP = /\bvstx-(?:figure|status|heading|callout-label|button|bar|signature)/;
+var COMPONENT_MARKUP = /\bvstx-(?:figure|status|heading|callout-label|button|bar|signature|kpi)/;
+var KPI_LINE = /^kpis?\s*:\s*\S/i;
+var KPI_LABEL = /^kpis?\s*:\s*/i;
+// Three tiles is the most a phone screen fits without scrolling sideways.
+var KPI_PER_ROW = 3;
+var KPI_GAP = 2;
+var NUMBER_BODY =
+  "(?:[$€£]\\s?)?\\d[\\d,]*(?:\\.\\d+)?" +
+  "(?:%|\\s?(?:pts|pp|bps|bn|[kmbx])\\b|\\s(?:million|billion|days?|hrs?|hours?|wks?|weeks?|months?|mins?|minutes?|yrs?|years?)\\b)?";
+var KPI_VALUE = new RegExp("(?<![\\w.$€£])(?:[+\\-−]\\s?)?" + NUMBER_BODY, "i");
+var KPI_CHANGE = new RegExp("(?<![\\w.$€£])[+\\-−]\\s?" + NUMBER_BODY, "i");
 var VOID_TAGS = /^(br|img|hr|meta|link|input|col|wbr|area|base|source)$/i;
 
 function roamingValue(key) {
@@ -275,12 +291,27 @@ function insideStructure(html, offset) {
   return depth > 0;
 }
 
+// Classic Outlook (Word) gives an empty cell a full line of height unless its font size and line height match the cell.
+function ruleCell(height, color, attrs) {
+  var fill = color ? ' bgcolor="' + color + '"' : "";
+  return (
+    "<td" + attrs + ' height="' + height + '"' + fill +
+    ' style="height:' + height + "px;" + (color ? "background:" + color + ";" : "") +
+    "font-size:" + height + "px;line-height:" + height + 'px;mso-line-height-rule:exactly">&nbsp;</td>'
+  );
+}
+
 function yellowRule(width, height) {
   return (
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>' +
-    '<td width="' + width + '" height="' + height + '" bgcolor="' + YELLOW + '" style="width:' + width + "px;height:" + height + "px;background:" + YELLOW +
-    ';font-size:0;line-height:0">&nbsp;</td></tr></table>'
+    ruleCell(height, YELLOW, ' width="' + width + '"').replace('style="', 'style="width:' + width + "px;") +
+    "</tr></table>"
   );
+}
+
+// Classic Outlook ignores margins on tables, so components are spaced by a wrapper it does respect.
+function spaced(margin, html) {
+  return '<div class="vstx-space" style="margin:' + margin + '">' + html + "</div>";
 }
 
 // A short line that is entirely bold, on its own, reads as a section heading.
@@ -306,14 +337,103 @@ function asCallout(inner, text) {
   var body = inner.replace(label, "$1");
   if (!spec || body === inner) return null;
   var labelFill = spec.strong ? INK : GREY;
+  // Classic Outlook merges neighbouring tables, so the gap between callouts is a row inside each one.
   return (
-    '<table class="vstx-callout" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0"><tr>' +
+    '<table class="vstx-callout" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+    "<tr>" + ruleCell(8, "", ' colspan="2"') + "</tr><tr>" +
     '<td class="vstx-callout-label" width="' + CALLOUT_LABEL_WIDTH + '" bgcolor="' + labelFill + '" style="width:' + CALLOUT_LABEL_WIDTH + "px;background:" + labelFill + ";padding:9px 12px;vertical-align:top;white-space:nowrap" +
     ";border-left:4px solid " + (spec.strong ? YELLOW : labelFill) + '">' +
     '<span style="font-family:' + FONT_STACK + ';font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#ffffff">' + spec.label + "</span></td>" +
     '<td bgcolor="' + PANEL + '" style="background:' + PANEL + ';padding:9px 14px;vertical-align:top">' +
     '<div class="vstx-callout-text" style="' + BODY_TEXT + '">' + body + "</div></td>" +
     "</tr></table>"
+  );
+}
+
+// "Spend $4.1M -8% vs plan [On track]" -> label "Spend", value "$4.1M", change "-8%", note "vs plan", status "on track".
+function parseKpi(segment) {
+  var status = null;
+  var rest = segment.replace(STATUS_TAG, function (_tag, found) {
+    status = status || found;
+    return " ";
+  });
+  var value = KPI_VALUE.exec(rest);
+  if (!value) return { label: "", value: rest.trim(), change: null, note: "", status: status, numeric: false };
+  var label = rest.slice(0, value.index);
+  var after = rest.slice(value.index + value[0].length);
+  var change = KPI_CHANGE.exec(after);
+  var note = change ? after.slice(0, change.index) + " " + after.slice(change.index + change[0].length) : after;
+  var tidy = function (text) {
+    return text.replace(/[()]/g, " ").replace(/\s+/g, " ").replace(/^[\s:,–—-]+|[\s:,–—-]+$/g, "");
+  };
+  label = tidy(label);
+  note = tidy(note);
+  if (!label && note) {
+    label = note;
+    note = "";
+  }
+  return { label: label, value: value[0].trim(), change: change ? change[0] : null, note: note, status: status, numeric: true };
+}
+
+function kpiTile(kpi, width) {
+  var text = "font-family:" + FONT_STACK + ";";
+  var lines = [];
+  if (kpi.label) {
+    lines.push(
+      '<div class="vstx-kpi-label" style="' + text + "font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:" + GREY + ';line-height:1.35">' +
+        escapeHtml(kpi.label) + "</div>"
+    );
+  }
+  lines.push(
+    '<div class="vstx-kpi-value" style="' + text + "font-size:" + (kpi.numeric ? "24px" : "16px") + ";font-weight:900;color:" + INK + ';line-height:1.2;padding-top:4px">' +
+      escapeHtml(kpi.value) + "</div>"
+  );
+  if (kpi.change || kpi.note) {
+    var change = "";
+    if (kpi.change) {
+      var falling = /^[\-−]/.test(kpi.change);
+      change =
+        "<span style=\"font-family:'Segoe UI Symbol',Arial,sans-serif;font-size:10px;color:" + INK + '">' + (falling ? "&#9660;" : "&#9650;") + "</span>&nbsp;" +
+        '<span style="' + text + "font-weight:700;color:" + INK + '">' + escapeHtml(kpi.change.replace(/^[+\-−]\s?/, "")) + "</span>";
+    }
+    var note = kpi.note ? '<span style="' + text + "color:" + GREY + '">' + (change ? "&nbsp;" : "") + escapeHtml(kpi.note) + "</span>" : "";
+    lines.push('<div class="vstx-kpi-change" style="' + text + "font-size:13px;color:" + INK + ';line-height:1.4;padding-top:2px">' + change + note + "</div>");
+  }
+  if (kpi.status) lines.push('<div class="vstx-kpi-status" style="padding-top:6px">' + statusPill("", kpi.status) + "</div>");
+  return (
+    '<td class="vstx-kpi-tile" width="' + width + '%" bgcolor="' + PANEL + '" style="width:' + width + "%;background:" + PANEL +
+    ";border-top:3px solid " + YELLOW + ';padding:10px 12px 12px;vertical-align:top">' + lines.join("") + "</td>"
+  );
+}
+
+// "KPI: Revenue $1.2M +6% | Margin 18%" becomes a row of tiles. Arrows show direction only: whether a change
+// is good depends on the metric (spend down is good news), so colour comes only from a status tag you add.
+function asKpiRow(text) {
+  if (!KPI_LINE.test(text)) return null;
+  var kpis = text
+    .replace(KPI_LABEL, "")
+    .split("|")
+    .map(function (segment) {
+      return segment.trim();
+    })
+    .filter(Boolean)
+    .map(parseKpi);
+  if (!kpis.some(function (kpi) { return kpi.numeric; })) return null;
+  var columns = Math.max(2, Math.min(kpis.length, KPI_PER_ROW));
+  var width = Math.floor((100 - KPI_GAP * (columns - 1)) / columns);
+  var gap = '<td class="vstx-kpi-gap" width="' + KPI_GAP + '%" style="width:' + KPI_GAP + '%;font-size:1px;line-height:1px">&nbsp;</td>';
+  var rows = [];
+  for (var start = 0; start < kpis.length; start += columns) {
+    var cells = kpis.slice(start, start + columns).map(function (kpi) {
+      return kpiTile(kpi, width);
+    });
+    while (cells.length < columns) cells.push('<td class="vstx-kpi-gap" width="' + width + '%">&nbsp;</td>');
+    rows.push("<tr>" + ruleCell(8, "", ' colspan="' + (columns * 2 - 1) + '"') + "</tr><tr>" + cells.join(gap) + "</tr>");
+  }
+  return (
+    '<table class="vstx-kpi" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+    rows.join("") +
+    "<tr>" + ruleCell(6, "", ' colspan="' + (columns * 2 - 1) + '"') + "</tr></table>"
   );
 }
 
@@ -349,12 +469,13 @@ function asButton(inner) {
   var host = hostOf(href);
   var label = /^(https?:\/\/|www\.)/i.test(linkText) ? smartLinkLabel(href, host) : linkText;
   var text = "font-family:" + FONT_STACK + ";";
-  return (
-    '<table class="vstx-button" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 4px"><tr>' +
-    '<td bgcolor="' + INK + '" style="background:' + INK + ";border-bottom:3px solid " + YELLOW + ';padding:11px 20px">' +
-    '<a href="' + href + '" style="' + text + 'font-size:14px;font-weight:700;color:#ffffff;text-decoration:none">' + escapeHtml(label) + "&nbsp;&#8594;</a>" +
-    "</td></tr></table>" +
-    '<div class="vstx-button-caption" style="' + text + "font-size:12px;color:" + GREY + ';margin:0 0 14px">' + escapeHtml(host) + "</div>"
+  return spaced(
+    "8px 0 14px",
+    '<table class="vstx-button" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>' +
+      '<td bgcolor="' + INK + '" style="background:' + INK + ";border-bottom:3px solid " + YELLOW + ';padding:11px 20px">' +
+      '<a href="' + href + '" style="' + text + 'font-size:14px;font-weight:700;color:#ffffff;text-decoration:none">' + escapeHtml(label) + "&nbsp;&#8594;</a>" +
+      "</td></tr></table>" +
+      '<div class="vstx-button-caption" style="' + text + "font-size:12px;color:" + GREY + ';margin:4px 0 0">' + escapeHtml(host) + "</div>"
   );
 }
 
@@ -365,6 +486,7 @@ function smartBlocks(html, features) {
     if (!text) return block;
     return (
       (features.buttons && asButton(inner)) ||
+      (features.kpis && asKpiRow(text)) ||
       (features.callouts && asCallout(inner, text)) ||
       (features.headings && asHeading(attrs, inner, text)) ||
       block
@@ -448,32 +570,14 @@ function smartFormat(html) {
 }
 
 // ---- Lists ----
+// Lists become small tables: classic Outlook (Word) draws its own "•" on every <li>, whatever the CSS says.
 
-function hexagonBullet(color) {
+function hexagonCell(color) {
   return (
-    "<span style=\"color:" + color +
-    ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;"
+    '<td width="' + BULLET_COLUMN + '" style="width:' + BULLET_COLUMN + "px;vertical-align:top;padding:0;" +
+    "font-size:" + BULLET_SIZE + "px;line-height:24px;mso-line-height-rule:exactly\">" +
+    '<span style="color:' + color + ";font-size:" + BULLET_SIZE + "px;line-height:24px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span></td>"
   );
-}
-
-// Any sub-list, numbered or not, becomes a hexagon bullet list; only top-level numbered lists keep numbers.
-function withHexagonBullets(html) {
-  var openLists = [];
-  var marked = html.replace(LIST_TAGS, function (tag, closing, name, attrs) {
-    name = name.toLowerCase();
-    if (name !== "li") {
-      if (closing) return "</" + (openLists.pop() || name) + ">";
-      var parent = openLists[openLists.length - 1];
-      var listName = parent ? "ul" : name;
-      openLists.push(listName);
-      if (!parent) return listName === "ul" ? mergeStyle(tag, listName, attrs, BULLET_LIST_CSS) : tag;
-      return mergeStyle(tag, listName, attrs, parent === "ol" ? SUBLIST_UNDER_NUMBER_CSS : SUBLIST_UNDER_BULLET_CSS);
-    }
-    if (closing || openLists[openLists.length - 1] !== "ul") return tag;
-    var level = openLists.length - (openLists[0] === "ol" ? 1 : 0);
-    return mergeStyle(tag, name, attrs, BULLET_ITEM_CSS) + hexagonBullet(level > 1 ? LIGHT_GREY : GREY);
-  });
-  return marked.replace(BULLET_BEFORE_BLOCK, "$2$1").replace(REPEATED_BULLETS, "$1");
 }
 
 function numberBadge(number) {
@@ -485,8 +589,8 @@ function numberBadge(number) {
   );
 }
 
-function endOfNumberedList(html, from) {
-  var tags = /<(\/?)ol\b[^>]*>/gi;
+function endOfList(html, from) {
+  var tags = /<(\/?)(?:ul|ol)\b[^>]*>/gi;
   tags.lastIndex = from;
   var depth = 1;
   var match;
@@ -528,33 +632,56 @@ function topLevelItems(inner) {
   return items;
 }
 
-function numberedTable(attrs, inner) {
-  var items = topLevelItems(inner);
-  if (!items.length) return "<ol" + attrs + ">" + inner + "</ol>";
-  var start = /\bstart=["']?(\d+)/i.exec(attrs);
-  var number = start ? parseInt(start[1], 10) : 1;
-  var rows = items.map(function (content) {
-    return (
-      '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
-      '<td style="' + NUMBERED_TEXT_CSS + '"><div style="' + BODY_TEXT + '">' + withNumberBadges(content) + "</div></td></tr>"
-    );
-  });
-  return (
-    '<table class="' + VSTX_LIST_CLASS + '" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 12px">' +
-    rows.join("") +
-    "</table>"
+function listTable(rows, margin) {
+  return spaced(
+    margin,
+    '<table class="' + VSTX_LIST_CLASS + '" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+      rows.join("") +
+      "</table>"
   );
 }
 
-function withNumberBadges(html) {
-  var openers = /<ol\b([^>]*)>/gi;
+function itemText(content, bulletDepth) {
+  return '<div style="' + BODY_TEXT + '">' + withListTables(content.replace(LEADING_HEXAGONS, "$1"), true, bulletDepth) + "</div>";
+}
+
+function numberedTable(attrs, items) {
+  var start = /\bstart=["']?(\d+)/i.exec(attrs);
+  var number = start ? parseInt(start[1], 10) : 1;
+  return listTable(
+    items.map(function (content) {
+      return (
+        '<tr><td style="vertical-align:top;padding:2px 12px 8px 0">' + numberBadge(number++) + "</td>" +
+        '<td style="' + NUMBERED_TEXT_CSS + '">' + itemText(content, 0) + "</td></tr>"
+      );
+    }),
+    "8px 0 12px"
+  );
+}
+
+function bulletTable(items, bulletDepth, nested) {
+  var color = bulletDepth > 0 ? LIGHT_GREY : GREY;
+  return listTable(
+    items.map(function (content) {
+      return "<tr>" + hexagonCell(color) + '<td style="vertical-align:top;padding:0 0 4px 6px">' + itemText(content, bulletDepth + 1) + "</td></tr>";
+    }),
+    nested ? "2px 0 4px" : "6px 0 10px"
+  );
+}
+
+// Only a top-level numbered list keeps its numbers; every sub-list, numbered or not, gets hexagon bullets.
+function withListTables(html, nested, bulletDepth) {
+  var openers = new RegExp(LIST_OPENER.source, "gi");
   var output = "";
   var cursor = 0;
   var open;
   while ((open = openers.exec(html))) {
-    var close = endOfNumberedList(html, openers.lastIndex);
+    var close = endOfList(html, openers.lastIndex);
     if (!close) break;
-    output += html.slice(cursor, open.index) + numberedTable(open[1], html.slice(openers.lastIndex, close.innerEnd));
+    var items = topLevelItems(html.slice(openers.lastIndex, close.innerEnd));
+    var numbered = open[1].toLowerCase() === "ol" && !nested;
+    var table = !items.length ? html.slice(open.index, close.end) : numbered ? numberedTable(open[2], items) : bulletTable(items, bulletDepth || 0, nested);
+    output += html.slice(cursor, open.index) + table;
     cursor = close.end;
     openers.lastIndex = close.end;
   }
@@ -591,9 +718,7 @@ function eachTopLevelTable(html, transform) {
 }
 
 function isOwnTable(attrs) {
-  return [VSTX_LIST_CLASS, VSTX_TABLE_CLASS, VSTX_BAR_ID, VSTX_SIGNATURE_ID].some(function (marker) {
-    return attrs.indexOf(marker) !== -1;
-  });
+  return OWN_MARKUP.test(attrs);
 }
 
 function withClass(openingTag, className) {
@@ -636,23 +761,17 @@ function brandTables(html) {
 }
 
 function restyleOwnPart(html) {
-  return withNumberBadges(withHexagonBullets(brandTables(smartFormat(brandText(markInsertedTables(html))))));
+  return withListTables(brandTables(smartFormat(brandText(markInsertedTables(html)))), false, 0);
 }
 
 // ---- Frame: brand bar and signature ----
 
-function ruleCell(height, color, attrs) {
-  return (
-    "<td" + attrs + ' height="' + height + '" bgcolor="' + color + '"' +
-    ' style="height:' + height + "px;background:" + color + ';font-size:0;line-height:0">&nbsp;</td>'
-  );
-}
-
 function brandBarHtml() {
   return (
-    '<table id="' + VSTX_BAR_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px">' +
+    '<table id="' + VSTX_BAR_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
     "<tr>" + ruleCell(6, INK, ' colspan="2"') + "</tr>" +
-    '<tr><td width="9%" style="font-size:0;line-height:0">&nbsp;</td>' + ruleCell(3, YELLOW, "") + "</tr>" +
+    "<tr>" + ruleCell(3, "", ' width="9%"') + ruleCell(3, YELLOW, "") + "</tr>" +
+    "<tr>" + ruleCell(22, "", ' colspan="2"') + "</tr>" +
     "</table>"
   );
 }
@@ -678,24 +797,47 @@ function signatureLines(details) {
 function signatureHtml(details) {
   var text = "font-family:" + FONT_STACK + ";";
   details = details || signatureDetails();
+  var panel = ' bgcolor="' + PANEL + '"';
+  var panelCss = "background:" + PANEL + ";border-top:1px solid " + HAIRLINE + ";";
   return (
-    '<table id="' + VSTX_SIGNATURE_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="' + PANEL + '"' +
-    ' style="border-collapse:collapse;margin-top:26px;background:' + PANEL + ";border-top:1px solid " + HAIRLINE + '">' +
+    '<table id="' + VSTX_SIGNATURE_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+    "<tr>" + ruleCell(26, "", ' colspan="3"') + "</tr>" +
     "<tr>" +
-    '<td width="' + LOGO_WIDTH + '" style="width:' + LOGO_WIDTH + 'px;padding:14px 16px 14px 20px;vertical-align:middle">' +
+    '<td width="' + LOGO_WIDTH + '"' + panel + ' style="' + panelCss + "width:" + LOGO_WIDTH + 'px;padding:14px 16px 14px 20px;vertical-align:middle">' +
     '<img src="' + LOGO_URL + '" width="' + LOGO_WIDTH + '" height="' + LOGO_HEIGHT + '" alt="Versatex"' +
     ' style="display:block;width:' + LOGO_WIDTH + "px;height:" + LOGO_HEIGHT + "px;border:0;outline:none;" +
     text + "font-size:12px;font-weight:700;color:" + INK + '">' +
     "</td>" +
-    '<td style="vertical-align:middle;padding:10px 20px 10px 16px;border-left:3px solid ' + YELLOW + '">' +
+    "<td" + panel + ' style="' + panelCss + "vertical-align:middle;padding:10px 20px 10px 16px;border-left:3px solid " + YELLOW + '">' +
     signatureLines(details) +
     "</td>" +
-    '<td align="right" style="vertical-align:middle;padding:10px 22px 10px 10px">' +
+    '<td align="right"' + panel + ' style="' + panelCss + 'vertical-align:middle;padding:10px 22px 10px 10px">' +
     '<img src="' + HEXAGONS_URL + '" width="' + HEXAGONS_WIDTH + '" height="' + HEXAGONS_HEIGHT + '" alt=""' +
     ' style="display:block;width:' + HEXAGONS_WIDTH + "px;height:" + HEXAGONS_HEIGHT + 'px;border:0;outline:none;margin-left:auto">' +
     "</td>" +
     "</tr></table>"
   );
+}
+
+// Once you've introduced yourself in a thread, later replies carry a one-line signature instead of the full panel.
+function shortSignatureHtml(details) {
+  var text = "font-family:" + FONT_STACK + ";font-size:13px;";
+  var separator = '<span style="' + text + "color:" + LIGHT_GREY + '">&nbsp;&nbsp;|&nbsp;&nbsp;</span>';
+  details = details || signatureDetails();
+  var parts = ['<span style="' + text + "font-size:14px;font-weight:700;color:" + INK + '">' + escapeHtml(details.name) + "</span>"];
+  if (details.title) parts.push('<span style="' + text + "color:" + INK + '">' + escapeHtml(details.title) + "</span>");
+  if (details.phone) parts.push('<span style="' + text + "color:" + GREY + '">' + escapeHtml(details.phone).replace(/-/g, "&#8209;") + "</span>");
+  return (
+    '<table id="' + VSTX_SIGNATURE_ID + '" class="vstx-signature-short" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">' +
+    "<tr>" + ruleCell(18, "", "") + "</tr>" +
+    '<tr><td style="border-left:3px solid ' + YELLOW + ';padding:2px 0 2px 12px;line-height:20px">' + parts.join(separator) + "</td></tr>" +
+    "</table>"
+  );
+}
+
+function signedEarlierInThread(quoted, name) {
+  var signature = new RegExp(VSTX_SIGNATURE_ID + "[\\s\\S]{0,3000}?>\\s*" + escapeHtml(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*<", "i");
+  return signature.test(quoted);
 }
 
 function insertAfterBodyTag(html, fragment) {
@@ -733,8 +875,10 @@ function styleEmail(html) {
       framed: false,
     };
   }
+  var details = signatureDetails();
+  var signature = featureSettings().shortReplies && signedEarlierInThread(quoted, details.name) ? shortSignatureHtml(details) : signatureHtml(details);
   return {
-    html: insertAfterBodyTag(restyleOwnPart(ownPart), brandBarHtml()) + signatureHtml() + quoted,
+    html: insertAfterBodyTag(restyleOwnPart(ownPart), brandBarHtml()) + signature + quoted,
     framed: true,
   };
 }
@@ -783,11 +927,47 @@ function canOfferSendAnyway() {
   return Office.context.requirements.isSetSupported("Mailbox", "1.14");
 }
 
+var ATTACHMENT_WORDS = /\b(?:attach(?:ed|es|ing|ment|ments)?|enclosed)(?![\wÀ-ɏ])/i;
+var SHARED_FILE_LINK = /href=["']?https?:\/\/[^"'\s>]*(?:sharepoint\.com|onedrive\.live\.com|1drv\.ms)/i;
+var PLAIN_TEXT_QUOTE = /^\s*(?:-{2,}\s*Original Message|_{10,}|From:\s)/im;
+
+// Only your own words count: the quoted thread is full of other people's "see attached".
+function mentionsMissingAttachment(item) {
+  var body = item.body;
+  return callAsync(function (done) {
+    body.getTypeAsync(done);
+  })
+    .then(function (type) {
+      var coercion = type === Office.CoercionType.Text ? Office.CoercionType.Text : Office.CoercionType.Html;
+      return callAsync(function (done) {
+        body.getAsync(coercion, done);
+      }).then(function (content) {
+        if (coercion === Office.CoercionType.Text) {
+          var quoteAt = content.search(PLAIN_TEXT_QUOTE);
+          return { words: quoteAt === -1 ? content : content.slice(0, quoteAt), sharedLink: false };
+        }
+        var own = content.slice(0, findQuoteStart(content));
+        return { words: plainText(own), sharedLink: SHARED_FILE_LINK.test(own) };
+      });
+    })
+    .then(function (own) {
+      if (!ATTACHMENT_WORDS.test(own.words) || own.sharedLink || !Office.context.requirements.isSetSupported("Mailbox", "1.8")) return false;
+      return callAsync(function (done) {
+        item.getAttachmentsAsync(done);
+      }).then(function (attachments) {
+        return !attachments.some(function (attachment) {
+          return !attachment.isInline;
+        });
+      });
+    });
+}
+
 function withoutControlTags(subject) {
   return subject.replace(CONTROL_TAGS, " ").replace(/\s{2,}/g, " ").trim();
 }
 
 // The [review] and [plain] subject tags steer the add-in and are removed before the email goes out.
+// The attachment check runs after styling, so "Send anyway" still sends the styled email.
 function onMessageSendHandler(event) {
   var item = Office.context.mailbox.item;
   var subject = "";
@@ -808,7 +988,27 @@ function onMessageSendHandler(event) {
       });
     })
     .then(function (status) {
-      var wantsReview = status === "styled" && REVIEW_TAG.test(subject);
+      var checkAttachment = featureSettings().attachmentCheck && canOfferSendAnyway();
+      // A reminder isn't worth blocking Send over: if the lookup fails, the email goes out.
+      var lookup = checkAttachment
+        ? mentionsMissingAttachment(item).catch(function () {
+            return false;
+          })
+        : Promise.resolve(false);
+      return lookup.then(function (missing) {
+        return { status: status, missingAttachment: missing };
+      });
+    })
+    .then(function (outcome) {
+      if (outcome.missingAttachment) {
+        event.completed({
+          allowEvent: false,
+          errorMessage: "Your email mentions an attachment, but nothing is attached. Select Don't send to add it, or send it as it is.",
+          sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser,
+        });
+        return;
+      }
+      var wantsReview = outcome.status === "styled" && REVIEW_TAG.test(subject);
       if (!wantsReview) {
         event.completed({ allowEvent: true });
         return;

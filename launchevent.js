@@ -11,7 +11,8 @@ var FEATURE_DEFAULTS = {
   buttons: true,
   statuses: true,
   kpis: true,
-  mentions: true,
+  // Off by default: Outlook on the web draws its own mention chip over the tag when the email is read.
+  mentions: false,
   agenda: true,
   shortReplies: true,
   attachmentCheck: true,

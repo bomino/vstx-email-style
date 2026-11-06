@@ -248,6 +248,8 @@ var KEY_FIGURE = new RegExp(
   "g"
 );
 var FIGURE_LIMIT = 8;
+// Brand yellow #fdc00f at about a quarter strength, so ink text stays easy to read on it.
+var FIGURE_HIGHLIGHT = "#fff0c2";
 var INNERMOST_BLOCK = /<(div|p)\b([^>]*)>((?:(?!<\/?(?:div|p)\b)[\s\S])*?)<\/\1>/gi;
 var BOLD_RUN = /<(b|strong)\b[^>]*>[\s\S]*?<\/\1>|<span\b[^>]*font-weight\s*:\s*(?:bold|[6-9]00)[^>]*>[\s\S]*?<\/span>/gi;
 var BOLD_STYLE = /font-weight\s*:\s*(?:bold|[6-9]00)/i;
@@ -558,14 +560,15 @@ function markStatuses(html) {
   });
 }
 
-// Key figures get a yellow underline marker; an email full of figures gets bold only, so the yellow never takes over.
+// Key figures get a light yellow highlight; an email full of figures gets bold only, so the yellow never takes over.
+// A background, not an underline: Outlook on the web strips borders from inline text when the email is read.
 function markKeyFigures(html) {
   var count = 0;
   mapText(html, true, function (text) {
     count += (text.match(KEY_FIGURE) || []).length;
     return text;
   });
-  var style = count > FIGURE_LIMIT ? "font-weight:700" : "font-weight:700;border-bottom:2px solid " + YELLOW + ";padding-bottom:1px";
+  var style = count > FIGURE_LIMIT ? "font-weight:700" : "font-weight:700;background:" + FIGURE_HIGHLIGHT + ";padding:0 2px";
   return mapText(html, true, function (text) {
     return text.replace(KEY_FIGURE, function (figure) {
       return '<span class="vstx-figure" style="' + style + '">' + figure + "</span>";

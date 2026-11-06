@@ -124,6 +124,7 @@ function mergeStyle(tag, name, attrs, css) {
 function scanTextTags(html, visit) {
   var tables = [];
   var foreignTables = 0;
+  var codeContext = [];
   return html.replace(TEXT_TAGS, function (tag, closing, name, attrs) {
     name = name.toLowerCase();
     if (name === "table") {
@@ -136,8 +137,14 @@ function scanTextTags(html, visit) {
       }
       return tag;
     }
-    if (closing || /WordSection/i.test(attrs)) return tag;
-    return visit(tag, name, attrs, foreignTables > 0);
+    if (closing) {
+      codeContext.pop();
+      return tag;
+    }
+    var inCode = MONOSPACE.test(attrs) || codeContext[codeContext.length - 1] === true;
+    codeContext.push(inCode);
+    if (/WordSection/i.test(attrs)) return tag;
+    return visit(tag, name, attrs, foreignTables > 0, inCode);
   });
 }
 
@@ -146,35 +153,35 @@ function defaultLook(html) {
   var look = { color: {}, size: {} };
   look.color[comparable(INK)] = true;
   look.size[BODY_SIZE] = true;
-  scanTextTags(html, function (tag, name, attrs, inForeignTable) {
+  scanTextTags(html, function (tag, name, attrs, inForeignTable, inCode) {
     if (inForeignTable || !BLOCK_TAGS.test(name)) return tag;
     var declarations = parseDeclarations(readStyle(attrs));
     var color = valueOf(declarations, "color");
     var size = valueOf(declarations, "font-size");
     if (color) look.color[comparable(color)] = true;
-    if (size) look.size[comparable(size)] = true;
+    if (size && !inCode) look.size[comparable(size)] = true;
     return tag;
   });
   return look;
 }
 
+// Code keeps its font and size, but Outlook's default colour still becomes brand ink.
 function brandText(html) {
   var look = defaultLook(html);
-  return scanTextTags(html, function (tag, name, attrs, inForeignTable) {
-    if (MONOSPACE.test(attrs)) return tag;
+  return scanTextTags(html, function (tag, name, attrs, inForeignTable, inCode) {
     var declarations = parseDeclarations(readStyle(attrs));
-    var overrides = [["font-family", FONT_STACK]];
+    var overrides = inCode ? [] : [["font-family", FONT_STACK]];
     if (!inForeignTable) {
       var isBlock = BLOCK_TAGS.test(name);
       var color = comparable(valueOf(declarations, "color"));
       var size = comparable(valueOf(declarations, "font-size"));
       if (color ? look.color[color] : isBlock) overrides.push(["color", INK]);
-      if (!HEADING_TAGS.test(name)) {
+      if (!inCode && !HEADING_TAGS.test(name)) {
         if (size ? look.size[size] : isBlock) overrides.push(["font-size", BODY_SIZE]);
         if (isBlock) overrides.push(["line-height", BODY_LINE_HEIGHT]);
       }
     }
-    return withStyle(name, attrs, declarations, overrides);
+    return overrides.length ? withStyle(name, attrs, declarations, overrides) : tag;
   });
 }
 

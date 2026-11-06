@@ -96,7 +96,8 @@ function withHexagonBullets(html) {
 function numberBadge(number) {
   return (
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>' +
-    '<td width="' + BADGE_SIZE + '" height="' + BADGE_SIZE + '" align="center" bgcolor="' + YELLOW + '" style="' + BADGE_CSS + '">' + number + "</td>" +
+    '<td width="' + BADGE_SIZE + '" height="' + BADGE_SIZE + '" align="center" bgcolor="' + YELLOW + '" style="' + BADGE_CSS + '">' +
+    '<span style="font-family:' + FONT_STACK + ";font-size:12px;font-weight:900;color:" + INK + '">' + number + "</span></td>" +
     "</tr></table>"
   );
 }
@@ -113,20 +114,31 @@ function endOfNumberedList(html, from) {
   return null;
 }
 
+// Outlook places a sub-list between items (<ol><li>..</li><ul>..</ul><li>..</li></ol>), not inside one,
+// so a sub-list found between items is attached to the item above it.
 function topLevelItems(inner) {
   var tags = /<(\/?)(ul|ol|li)\b[^>]*>/gi;
   var items = [];
+  var leading = "";
   var depth = 0;
   var itemStart = -1;
+  var subListStart = -1;
   var match;
   while ((match = tags.exec(inner))) {
     var closing = match[1] === "/";
     if (match[2].toLowerCase() !== "li") {
+      if (!closing && depth === 0 && itemStart === -1) subListStart = match.index;
       depth += closing ? -1 : 1;
+      if (closing && depth === 0 && subListStart !== -1) {
+        var subList = inner.slice(subListStart, tags.lastIndex);
+        if (items.length) items[items.length - 1] += subList;
+        else leading += subList;
+        subListStart = -1;
+      }
     } else if (depth === 0 && !closing) {
       itemStart = tags.lastIndex;
     } else if (depth === 0 && itemStart !== -1) {
-      items.push(inner.slice(itemStart, match.index));
+      items.push((items.length ? "" : leading) + inner.slice(itemStart, match.index));
       itemStart = -1;
     }
   }

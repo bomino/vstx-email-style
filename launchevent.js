@@ -1,38 +1,43 @@
 var VSTX_SIGNATURE_ID = "vstx-signature";
+var VSTX_BAR_ID = "vstx-bar";
+var VSTX_LIST_CLASS = "vstx-list";
 var SIGNATURE_NAME = "Lawali";
 var SIGNATURE_TITLE = "Analytics & AI Solutions";
 var SIGNATURE_PHONE = "513-639-8829";
 var ASSET_BASE = "https://bomino.github.io/vstx-email-style/assets/";
-var LOGO_URL = ASSET_BASE + "vstx-logo-v2.png";
+var LOGO_URL = ASSET_BASE + "vstx-logo-v3.png";
 var LOGO_WIDTH = 54;
 var LOGO_HEIGHT = 70;
-var HEXAGONS_URL = ASSET_BASE + "vstx-hexagons.png";
+var HEXAGONS_URL = ASSET_BASE + "vstx-hexagons-v2.png";
 var HEXAGONS_WIDTH = 66;
 var HEXAGONS_HEIGHT = 62;
 var FONT_STACK = "Roboto,Arial,sans-serif";
 var INK = "#231f20";
 var GREY = "#58595b";
+var LIGHT_GREY = "#a7a9ac";
 var YELLOW = "#fdc00f";
 var PANEL = "#f4f4f4";
 var HAIRLINE = "#e6e7e8";
-var BRAND_TEXT = "font-family:" + FONT_STACK + ";color:" + INK;
-var BODY_TEXT = BRAND_TEXT + ";font-size:15px;line-height:1.6";
+var BODY_SIZE = "15px";
+var BODY_LINE_HEIGHT = "1.6";
+var BODY_TEXT = "font-family:" + FONT_STACK + ";color:" + INK + ";font-size:" + BODY_SIZE + ";line-height:" + BODY_LINE_HEIGHT;
 var BULLET_LIST_CSS = "list-style:none;margin-left:0;padding-left:0";
 var SUBLIST_UNDER_NUMBER_CSS = "list-style:none;margin:6px 0 4px;padding-left:0";
 var SUBLIST_UNDER_BULLET_CSS = "list-style:none;margin:2px 0 6px;padding-left:24px";
 var BULLET_ITEM_CSS = "list-style:none;margin-bottom:4px";
-var HEXAGON_BULLET =
-  "<span style=\"color:" + YELLOW + ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;";
 var BADGE_SIZE = 22;
 var BADGE_CSS =
   "width:" + BADGE_SIZE + "px;height:" + BADGE_SIZE + "px;background:" + YELLOW + ";font-family:" + FONT_STACK +
   ";font-size:12px;font-weight:900;color:" + INK + ";line-height:" + BADGE_SIZE + "px;text-align:center";
 var NUMBERED_TEXT_CSS = BODY_TEXT + ";vertical-align:top;padding:0 0 8px";
 var REVIEW_TAG = "[review]";
-var TEXT_TAGS = /<(p|li|div|span|td|font)(\s[^>]*)?>/gi;
-var HEADING_TAGS = /<(h[1-6])(\s[^>]*)?>/gi;
+var TEXT_TAGS = /<(\/?)(table|p|li|div|span|font|td|th|h[1-6])\b([^>]*)>/gi;
+var BLOCK_TAGS = /^(p|li|div)$/;
+var HEADING_TAGS = /^h[1-6]$/;
+var MONOSPACE = /consolas|courier|monaco|menlo|cascadia|lucida console|monospace/i;
 var LIST_TAGS = /<(\/?)(ul|ol|li)\b([^>]*)>/gi;
 var BULLET_BEFORE_BLOCK = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(\s*<(?:div|p)\b[^>]*>)/gi;
+var REPEATED_BULLETS = /(<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)(?:\s*<span style="[^"]*">&#11042;<\/span>&nbsp;&nbsp;)+/gi;
 var STYLE_ATTR = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i;
 var QUOTE_MARKERS = [
   /<div[^>]*\bid=["']?appendonsend\b/i,
@@ -60,27 +65,130 @@ function findQuoteStart(html) {
   return bodyEnd === -1 ? html.length : bodyEnd;
 }
 
-function styleMerger(css) {
-  return function (tag, name, attrs) {
-    attrs = attrs || "";
-    if (/WordSection/i.test(attrs)) return tag;
-    var match = STYLE_ATTR.exec(attrs);
-    if (!match) return "<" + name + attrs + ' style="' + css + '">';
-    var quote = match[1].charAt(0);
-    var existing = match[2] !== undefined ? match[2] : match[3];
-    var merged = existing.replace(/[;\s]*$/, "") + ";" + css;
-    return "<" + name + attrs.replace(STYLE_ATTR, function () {
-      return "style=" + quote + merged + quote;
-    }) + ">";
-  };
+// ---- Inline style helpers ----
+
+function readStyle(attrs) {
+  var match = STYLE_ATTR.exec(attrs || "");
+  if (!match) return "";
+  return (match[2] !== undefined ? match[2] : match[3]).replace(/&quot;/g, "'");
+}
+
+function parseDeclarations(style) {
+  return style
+    .split(";")
+    .map(function (part) {
+      var colon = part.indexOf(":");
+      return colon === -1 ? null : [part.slice(0, colon).trim().toLowerCase(), part.slice(colon + 1).trim()];
+    })
+    .filter(function (declaration) {
+      return declaration && declaration[0];
+    });
+}
+
+function valueOf(declarations, property) {
+  for (var i = declarations.length - 1; i >= 0; i--) {
+    if (declarations[i][0] === property) return declarations[i][1];
+  }
+  return "";
+}
+
+function comparable(value) {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function withStyle(name, attrs, declarations, overrides) {
+  var replaced = {};
+  overrides.forEach(function (override) {
+    replaced[override[0]] = true;
+  });
+  var style = declarations
+    .filter(function (declaration) {
+      return !replaced[declaration[0]];
+    })
+    .concat(overrides)
+    .map(function (declaration) {
+      return declaration[0] + ":" + declaration[1];
+    })
+    .join(";");
+  var otherAttrs = (attrs || "").replace(STYLE_ATTR, "").replace(/\s+$/, "");
+  return "<" + name + otherAttrs + ' style="' + style + '">';
+}
+
+function mergeStyle(tag, name, attrs, css) {
+  if (/WordSection/i.test(attrs || "")) return tag;
+  return withStyle(name, attrs, parseDeclarations(readStyle(attrs)), parseDeclarations(css));
+}
+
+// ---- Text: restyle only the default look, keep deliberate formatting ----
+
+function scanTextTags(html, visit) {
+  var tables = [];
+  var foreignTables = 0;
+  return html.replace(TEXT_TAGS, function (tag, closing, name, attrs) {
+    name = name.toLowerCase();
+    if (name === "table") {
+      if (closing) {
+        if (tables.pop()) foreignTables--;
+      } else {
+        var foreign = attrs.indexOf(VSTX_LIST_CLASS) === -1;
+        tables.push(foreign);
+        if (foreign) foreignTables++;
+      }
+      return tag;
+    }
+    if (closing || /WordSection/i.test(attrs)) return tag;
+    return visit(tag, name, attrs, foreignTables > 0);
+  });
+}
+
+// The look Outlook applies to plain typed text lives on block elements; anything else on a span is deliberate.
+function defaultLook(html) {
+  var look = { color: {}, size: {} };
+  look.color[comparable(INK)] = true;
+  look.size[BODY_SIZE] = true;
+  scanTextTags(html, function (tag, name, attrs, inForeignTable) {
+    if (inForeignTable || !BLOCK_TAGS.test(name)) return tag;
+    var declarations = parseDeclarations(readStyle(attrs));
+    var color = valueOf(declarations, "color");
+    var size = valueOf(declarations, "font-size");
+    if (color) look.color[comparable(color)] = true;
+    if (size) look.size[comparable(size)] = true;
+    return tag;
+  });
+  return look;
+}
+
+function brandText(html) {
+  var look = defaultLook(html);
+  return scanTextTags(html, function (tag, name, attrs, inForeignTable) {
+    if (MONOSPACE.test(attrs)) return tag;
+    var declarations = parseDeclarations(readStyle(attrs));
+    var overrides = [["font-family", FONT_STACK]];
+    if (!inForeignTable) {
+      var isBlock = BLOCK_TAGS.test(name);
+      var color = comparable(valueOf(declarations, "color"));
+      var size = comparable(valueOf(declarations, "font-size"));
+      if (color ? look.color[color] : isBlock) overrides.push(["color", INK]);
+      if (!HEADING_TAGS.test(name)) {
+        if (size ? look.size[size] : isBlock) overrides.push(["font-size", BODY_SIZE]);
+        if (isBlock) overrides.push(["line-height", BODY_LINE_HEIGHT]);
+      }
+    }
+    return withStyle(name, attrs, declarations, overrides);
+  });
+}
+
+// ---- Lists ----
+
+function hexagonBullet(color) {
+  return (
+    "<span style=\"color:" + color +
+    ";font-size:18px;line-height:1;vertical-align:-1px;font-family:'Segoe UI Symbol',Arial,sans-serif\">&#11042;</span>&nbsp;&nbsp;"
+  );
 }
 
 // Any sub-list, numbered or not, becomes a hexagon bullet list; only top-level numbered lists keep numbers.
 function withHexagonBullets(html) {
-  var styleTopList = styleMerger(BULLET_LIST_CSS);
-  var styleUnderNumber = styleMerger(SUBLIST_UNDER_NUMBER_CSS);
-  var styleUnderBullet = styleMerger(SUBLIST_UNDER_BULLET_CSS);
-  var styleItem = styleMerger(BULLET_ITEM_CSS);
   var openLists = [];
   var marked = html.replace(LIST_TAGS, function (tag, closing, name, attrs) {
     name = name.toLowerCase();
@@ -89,13 +197,14 @@ function withHexagonBullets(html) {
       var parent = openLists[openLists.length - 1];
       var listName = parent ? "ul" : name;
       openLists.push(listName);
-      if (!parent) return listName === "ul" ? styleTopList(tag, listName, attrs) : tag;
-      return (parent === "ol" ? styleUnderNumber : styleUnderBullet)(tag, listName, attrs);
+      if (!parent) return listName === "ul" ? mergeStyle(tag, listName, attrs, BULLET_LIST_CSS) : tag;
+      return mergeStyle(tag, listName, attrs, parent === "ol" ? SUBLIST_UNDER_NUMBER_CSS : SUBLIST_UNDER_BULLET_CSS);
     }
     if (closing || openLists[openLists.length - 1] !== "ul") return tag;
-    return styleItem(tag, name, attrs) + HEXAGON_BULLET;
+    var level = openLists.length - (openLists[0] === "ol" ? 1 : 0);
+    return mergeStyle(tag, name, attrs, BULLET_ITEM_CSS) + hexagonBullet(level > 1 ? LIGHT_GREY : GREY);
   });
-  return marked.replace(BULLET_BEFORE_BLOCK, "$2$1");
+  return marked.replace(BULLET_BEFORE_BLOCK, "$2$1").replace(REPEATED_BULLETS, "$1");
 }
 
 function numberBadge(number) {
@@ -162,7 +271,7 @@ function numberedTable(attrs, inner) {
     );
   });
   return (
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 12px">' +
+    '<table class="' + VSTX_LIST_CLASS + '" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 12px">' +
     rows.join("") +
     "</table>"
   );
@@ -184,12 +293,10 @@ function withNumberBadges(html) {
 }
 
 function restyleOwnPart(html) {
-  return withNumberBadges(
-    withHexagonBullets(
-      html.replace(TEXT_TAGS, styleMerger(BODY_TEXT)).replace(HEADING_TAGS, styleMerger(BRAND_TEXT))
-    )
-  );
+  return withNumberBadges(withHexagonBullets(brandText(html)));
 }
+
+// ---- Frame: brand bar and signature ----
 
 function ruleCell(height, color, attrs) {
   return (
@@ -200,7 +307,7 @@ function ruleCell(height, color, attrs) {
 
 function brandBarHtml() {
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px">' +
+    '<table id="' + VSTX_BAR_ID + '" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px">' +
     "<tr>" + ruleCell(6, INK, ' colspan="2"') + "</tr>" +
     '<tr><td width="9%" style="font-size:0;line-height:0">&nbsp;</td>' + ruleCell(3, YELLOW, "") + "</tr>" +
     "</table>"
@@ -216,7 +323,8 @@ function signatureHtml() {
     "<tr>" +
     '<td width="' + LOGO_WIDTH + '" style="width:' + LOGO_WIDTH + 'px;padding:14px 16px 14px 20px;vertical-align:middle">' +
     '<img src="' + LOGO_URL + '" width="' + LOGO_WIDTH + '" height="' + LOGO_HEIGHT + '" alt="Versatex"' +
-    ' style="display:block;width:' + LOGO_WIDTH + "px;height:" + LOGO_HEIGHT + 'px;border:0;outline:none">' +
+    ' style="display:block;width:' + LOGO_WIDTH + "px;height:" + LOGO_HEIGHT + "px;border:0;outline:none;" +
+    text + "font-size:12px;font-weight:700;color:" + INK + '">' +
     "</td>" +
     '<td style="vertical-align:middle;padding:10px 20px 10px 16px;border-left:3px solid ' + YELLOW + '">' +
     '<span style="' + text + "font-size:16px;font-weight:700;letter-spacing:.01em;color:" + INK + '">' + escapeHtml(SIGNATURE_NAME) + "</span><br>" +
@@ -238,11 +346,45 @@ function insertAfterBodyTag(html, fragment) {
   return html.slice(0, at) + fragment + html.slice(at);
 }
 
-function applyVersatexStyle(html) {
-  var quoteStart = findQuoteStart(html);
-  var ownPart = insertAfterBodyTag(restyleOwnPart(html.slice(0, quoteStart)), brandBarHtml());
-  return ownPart + signatureHtml() + html.slice(quoteStart);
+function signatureStart(ownPart) {
+  var at = ownPart.indexOf(VSTX_SIGNATURE_ID);
+  return at === -1 ? -1 : ownPart.lastIndexOf("<table", at);
 }
+
+function textStart(ownPart) {
+  var at = ownPart.indexOf(VSTX_BAR_ID);
+  if (at !== -1) {
+    var barClose = ownPart.indexOf("</table>", at);
+    if (barClose !== -1) return barClose + "</table>".length;
+  }
+  var bodyTag = /<body[^>]*>/i.exec(ownPart);
+  return bodyTag ? bodyTag.index + bodyTag[0].length : 0;
+}
+
+// Returns the restyled email and whether this send added the frame (false when it only re-tidied the text).
+function styleEmail(html) {
+  var quoteStart = findQuoteStart(html);
+  var ownPart = html.slice(0, quoteStart);
+  var quoted = html.slice(quoteStart);
+  var signatureAt = signatureStart(ownPart);
+  if (signatureAt !== -1) {
+    var from = Math.min(textStart(ownPart), signatureAt);
+    return {
+      html: ownPart.slice(0, from) + restyleOwnPart(ownPart.slice(from, signatureAt)) + ownPart.slice(signatureAt) + quoted,
+      framed: false,
+    };
+  }
+  return {
+    html: insertAfterBodyTag(restyleOwnPart(ownPart), brandBarHtml()) + signatureHtml() + quoted,
+    framed: true,
+  };
+}
+
+function applyVersatexStyle(html) {
+  return styleEmail(html).html;
+}
+
+// ---- Outlook integration ----
 
 function callAsync(invoke) {
   return new Promise(function (resolve, reject) {
@@ -253,18 +395,23 @@ function callAsync(invoke) {
   });
 }
 
+// Resolves to "styled" (frame added), "refreshed" (text re-tidied), "unchanged" or "plain-text".
 function restyleCurrentItem() {
-  var item = Office.context.mailbox.item;
+  var body = Office.context.mailbox.item.body;
   return callAsync(function (done) {
-    item.body.getAsync(Office.CoercionType.Html, done);
-  }).then(function (html) {
-    var ownPart = html.slice(0, findQuoteStart(html));
-    if (ownPart.indexOf(VSTX_SIGNATURE_ID) !== -1) return false;
-    var styled = applyVersatexStyle(html);
+    body.getTypeAsync(done);
+  }).then(function (type) {
+    if (type === Office.CoercionType.Text) return "plain-text";
     return callAsync(function (done) {
-      item.body.setAsync(styled, { coercionType: Office.CoercionType.Html }, done);
-    }).then(function () {
-      return true;
+      body.getAsync(Office.CoercionType.Html, done);
+    }).then(function (html) {
+      var result = styleEmail(html);
+      if (result.html === html) return "unchanged";
+      return callAsync(function (done) {
+        body.setAsync(result.html, { coercionType: Office.CoercionType.Html }, done);
+      }).then(function () {
+        return result.framed ? "styled" : "refreshed";
+      });
     });
   });
 }
@@ -279,16 +426,16 @@ function canOfferSendAnyway() {
 
 function onMessageSendHandler(event) {
   var item = Office.context.mailbox.item;
-  var restyled = false;
+  var framedNow = false;
   restyleCurrentItem()
-    .then(function (changed) {
-      restyled = changed;
+    .then(function (status) {
+      framedNow = status === "styled";
       return callAsync(function (done) {
         item.subject.getAsync(done);
       });
     })
     .then(function (subject) {
-      var wantsReview = restyled && subject.toLowerCase().indexOf(REVIEW_TAG) !== -1;
+      var wantsReview = framedNow && subject.toLowerCase().indexOf(REVIEW_TAG) !== -1;
       if (!wantsReview) {
         event.completed({ allowEvent: true });
         return;
@@ -326,10 +473,17 @@ function notify(message) {
   });
 }
 
+var PREVIEW_MESSAGES = {
+  styled: "Versatex style applied.",
+  refreshed: "Versatex style refreshed for your latest edits.",
+  unchanged: "This email already has the Versatex style.",
+  "plain-text": "This is a plain-text email, so the Versatex style isn't applied.",
+};
+
 function previewStyle(event) {
   restyleCurrentItem()
-    .then(function (changed) {
-      return notify(changed ? "Versatex style applied." : "This email already has the Versatex style.");
+    .then(function (status) {
+      return notify(PREVIEW_MESSAGES[status]);
     })
     .catch(function (error) {
       return notify("Couldn't restyle: " + describeError(error)).catch(function () {
